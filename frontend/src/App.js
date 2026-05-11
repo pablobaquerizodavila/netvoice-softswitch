@@ -7,6 +7,11 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Extensions from './components/Extensions';
 import CDRPage from './components/CDRPage';
+import Settings from './components/Settings';
+import Carriers from './components/Carriers';
+import Planes from './components/Planes';
+import Clientes from './components/Clientes';
+import DIDSeries from './components/DIDSeries';
 
 function Layout({ children }) {
   return (
@@ -35,6 +40,11 @@ export default function App() {
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/extensions" element={<Extensions />} />
                   <Route path="/cdr" element={<CDRPage />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/carriers" element={<Carriers />} />
+                    <Route path="/planes" element={<Planes />} />
+                    <Route path="/clientes" element={<Clientes />} />
+                    <Route path="/did-series" element={<DIDSeries />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

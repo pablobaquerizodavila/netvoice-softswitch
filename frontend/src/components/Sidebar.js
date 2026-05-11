@@ -7,8 +7,13 @@ const menuItems = [
     { label: 'Extensiones', path: '/extensions' },
     { label: 'Metricas', path: '/metrics' },
   ]},
+  { section: 'COMERCIAL', items: [
+    { label: 'Carriers / Trunks', path: '/carriers' },
+    { label: 'Clientes', path: '/clientes' },
+    { label: 'Planes de cobro', path: '/planes' },
+    { label: 'Series DID', path: '/did-series' },
+  ]},
   { section: 'CONFIGURACION', items: [
-    { label: 'Carriers', path: '/carriers' },
     { label: 'Ajustes', path: '/settings' },
   ]},
 ];
