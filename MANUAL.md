@@ -291,7 +291,7 @@ git push origin main          # subir a GitHub
 | Prioridad | Tarea | Descripción | Estado |
 |---|---|---|---|
 | Alta | Nginx | Proxy reverso para React en puerto 80 | 🔧 Pendiente |
-| Alta | Login JWT | Autenticación con tokens para el panel | 🔧 Pendiente |
+| Alta | Login JWT | Autenticación con tokens para el panel | ✅ Completado |
 | Media | Gráficos CDR | Dashboard con métricas (recharts) | 🔧 Pendiente |
 | Media | CRUD extensiones | Crear/editar/eliminar desde el panel | 🔧 Pendiente |
 | Media | Carriers/Trunks | Interfaces para proveedores de telefonía | 🔧 Pendiente |
@@ -299,11 +299,120 @@ git push origin main          # subir a GitHub
 
 ---
 
-## 7. Historial de Versiones
+## 7. Módulo de Login JWT
+
+### 7.1 Archivos del módulo
+
+```
+netvoice-softswitch/
+  sql/
+    users_table.sql      # Tabla users en MySQL
+    seed_admin.sql       # Usuario admin inicial
+  panel/
+    app/
+      database.py        # Conexión SQLAlchemy + get_db()
+      models.py          # Modelo User (SQLAlchemy)
+      auth.py            # JWT: hash, tokens, dependencias
+      main.py            # FastAPI app completa con auth
+    requirements.txt     # Dependencias Python
+    .env.example         # Variables de entorno de referencia
+  ui/src/
+    api.js               # Axios con Bearer token + interceptor 401
+    contexts/
+      AuthContext.jsx    # Estado global de sesión (login/logout)
+    components/
+      Login.jsx          # Pantalla de login
+      PrivateRoute.jsx   # Redirige a /login si no hay sesión
+      Navbar.jsx         # Barra con usuario, rol y botón Salir
+    App.jsx              # Rutas con BrowserRouter + AuthProvider
+```
+
+### 7.2 Despliegue en voip-panel-01
+
+#### Paso 1 — Base de datos (en voip-core-01, 192.168.0.161)
+
+```bash
+mysql -u asteriskuser -p asterisk < sql/users_table.sql
+mysql -u asteriskuser -p asterisk < sql/seed_admin.sql
+```
+
+> Credencial inicial: `admin` / `Admin1234!` — **cambiar tras el primer login**.
+
+#### Paso 2 — Backend (en voip-panel-01, 192.168.0.7)
+
+```bash
+# Copiar archivos del panel al servidor
+scp -r panel/app/*.py pbaquerizo@192.168.0.7:~/netvoice-panel/app/
+scp panel/requirements.txt pbaquerizo@192.168.0.7:~/netvoice-panel/
+
+# En la VM: instalar dependencias nuevas
+ssh pbaquerizo@192.168.0.7
+cd ~/netvoice-panel
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Agregar JWT_SECRET_KEY al .env
+echo "JWT_SECRET_KEY=$(openssl rand -hex 32)" >> .env
+
+# Reiniciar el servicio
+sudo systemctl restart netvoice-panel
+sudo systemctl status netvoice-panel
+```
+
+#### Paso 3 — Frontend (en voip-panel-01)
+
+```bash
+# Copiar archivos del frontend al servidor
+scp ui/src/api.js pbaquerizo@192.168.0.7:~/netvoice-ui/src/
+scp -r ui/src/contexts pbaquerizo@192.168.0.7:~/netvoice-ui/src/
+scp ui/src/components/Login.jsx pbaquerizo@192.168.0.7:~/netvoice-ui/src/components/
+scp ui/src/components/PrivateRoute.jsx pbaquerizo@192.168.0.7:~/netvoice-ui/src/components/
+scp ui/src/components/Navbar.jsx pbaquerizo@192.168.0.7:~/netvoice-ui/src/components/
+scp ui/src/App.jsx pbaquerizo@192.168.0.7:~/netvoice-ui/src/
+
+# En la VM: instalar react-router-dom y axios
+ssh pbaquerizo@192.168.0.7
+cd ~/netvoice-ui
+npm install react-router-dom axios
+
+# Integrar las rutas/vistas existentes en el nuevo App.jsx
+# (descomentar imports en ui/src/App.jsx)
+npm start
+```
+
+### 7.3 Nuevos endpoints API
+
+| Método | Endpoint | Auth | Descripción |
+|---|---|---|---|
+| POST | /auth/login | No | Devuelve JWT (form: username + password) |
+| GET | /auth/me | Bearer | Usuario y rol del token |
+| POST | /auth/change-password | Bearer | Cambiar contraseña propia |
+| GET | /users | admin | Listar usuarios |
+| POST | /users | admin | Crear usuario |
+| DELETE | /users/{id} | admin | Eliminar usuario |
+| GET | /cdr | Bearer | Historial de llamadas (protegido) |
+| GET | /extensions | Bearer | Extensiones (protegido) |
+
+### 7.4 Verificar funcionamiento
+
+```bash
+# Obtener token
+TOKEN=$(curl -s -X POST http://192.168.0.7:8000/auth/login \
+  -d "username=admin&password=Admin1234!" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Usar token
+curl -H "Authorization: Bearer $TOKEN" http://192.168.0.7:8000/auth/me
+curl -H "Authorization: Bearer $TOKEN" http://192.168.0.7:8000/cdr
+```
+
+---
+
+## 8. Historial de Versiones
 
 | Versión | Fecha | Cambios |
 |---|---|---|
 | 1.0 | Mayo 2026 | Versión inicial — Asterisk + PJSIP + MySQL + CDR + FastAPI + React completados |
+| 1.1 | Mayo 2026 | Módulo de Login JWT — autenticación backend FastAPI + frontend React |
 
 ---
-*Netvoice Softswitch / Linkotel — Manual de Procesos v1.0*
+*Netvoice Softswitch / Linkotel — Manual de Procesos v1.1*
