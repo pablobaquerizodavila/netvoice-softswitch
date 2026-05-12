@@ -212,14 +212,34 @@ class ClienteCreate(BaseModel):
     credito_limite: float = 0
 
 @app.get("/clientes")
-def get_clientes(db: Session = Depends(get_db)):
-    result = db.execute(text("""
-        SELECT c.*, p.nombre as plan_nombre
-        FROM clientes c LEFT JOIN planes p ON c.plan_id = p.id
-        ORDER BY c.id
-    """))
-    return {"data": [dict(r._mapping) for r in result.fetchall()]}
-
+def get_clientes(db: Session = Depends(get_db), page: int = 1, limit: int = 50, search: str = "", plan_id: str = "", activo: str = "", tipo_identificacion: str = "", tipo_cuenta: str = "", ciudad: str = ""):
+    offset = (page - 1) * limit
+    conditions = []
+    params = {"limit": limit, "offset": offset}
+    if search:
+        conditions.append("(c.nombre LIKE :search OR c.ruc LIKE :search OR c.email LIKE :search)")
+        params["search"] = f"%{search}%"
+    if plan_id == "null":
+        conditions.append("c.plan_id IS NULL")
+    elif plan_id:
+        conditions.append("c.plan_id = :plan_id")
+        params["plan_id"] = int(plan_id)
+    if activo:
+        conditions.append("c.activo = :activo")
+        params["activo"] = activo
+    if tipo_identificacion:
+        conditions.append("c.tipo_identificacion = :tipo_id")
+        params["tipo_id"] = tipo_identificacion
+    if tipo_cuenta:
+        conditions.append("c.tipo_cuenta = :tipo_cuenta")
+        params["tipo_cuenta"] = tipo_cuenta
+    if ciudad:
+        conditions.append("c.ciudad_codigo = :ciudad")
+        params["ciudad"] = ciudad
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+    total = db.execute(text(f"SELECT COUNT(*) FROM clientes c {where}"), params).scalar()
+    result = db.execute(text(f"SELECT c.*, p.nombre as plan_nombre FROM clientes c LEFT JOIN planes p ON c.plan_id = p.id {where} ORDER BY c.nombre LIMIT :limit OFFSET :offset"), params)
+    return {"data": [dict(r._mapping) for r in result.fetchall()], "total": total, "page": page, "limit": limit, "pages": (total + limit - 1) // limit}
 @app.post("/clientes")
 def create_cliente(c: ClienteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db.execute(text("""

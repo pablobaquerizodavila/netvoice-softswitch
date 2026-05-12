@@ -9,16 +9,32 @@ export default function Clientes() {
   const [editItem, setEditItem] = useState(null);
   const [msg, setMsg] = useState(null);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const LIMIT = 50;
+  const [filtros, setFiltros] = useState({plan_id:'', activo:'', tipo_identificacion:'', tipo_cuenta:'', ciudad:''});
   const emptyForm = {nombre:'',ruc:'',email:'',telefono:'',plan_id:'',credito_limite:'0',direccion:'',celular:'',nombre_comercial:'',ciudad_codigo:'',observaciones:''};
   const [form, setForm] = useState(emptyForm);
 
-  const load = () => {
+  const load = (p=1, s='') => {
     setLoading(true);
-    Promise.all([api.get('/clientes'), api.get('/planes')])
-      .then(([c,p]) => { setData(c.data.data||[]); setPlanes(p.data.data||[]); })
-      .finally(()=>setLoading(false));
+    Promise.all([
+      api.get('/clientes?page='+p+'&limit=50&search='+encodeURIComponent(s)
+        +'&plan_id='+encodeURIComponent(filtros.plan_id)
+        +'&activo='+encodeURIComponent(filtros.activo)
+        +'&tipo_identificacion='+encodeURIComponent(filtros.tipo_identificacion)
+        +'&tipo_cuenta='+encodeURIComponent(filtros.tipo_cuenta)
+        +'&ciudad='+encodeURIComponent(filtros.ciudad)),
+      api.get('/planes')
+    ]).then(([c,pl]) => {
+      setData(c.data.data||[]);
+      setTotal(c.data.total||0);
+      setPages(c.data.pages||1);
+      setPlanes(pl.data.data||[]);
+    }).finally(()=>setLoading(false));
   };
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ load(1,''); },[]);
 
   const showMsg = (text,type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),4000); };
 
@@ -67,11 +83,50 @@ export default function Clientes() {
     catch(e) { showMsg('Error','error'); }
   };
 
-  const filtered = data.filter(c => !search ||
-    c.nombre?.toLowerCase().includes(search.toLowerCase()) ||
-    c.ruc?.includes(search) ||
-    c.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = data;
+  const handleFiltro = (key, val) => {
+    const newFiltros = {...filtros, [key]: val};
+    setFiltros(newFiltros);
+    setPage(1);
+    setLoading(true);
+    Promise.all([
+      api.get('/clientes?page=1&limit=50&search='+encodeURIComponent(search)
+        +'&plan_id='+encodeURIComponent(newFiltros.plan_id)
+        +'&activo='+encodeURIComponent(newFiltros.activo)
+        +'&tipo_identificacion='+encodeURIComponent(newFiltros.tipo_identificacion)
+        +'&tipo_cuenta='+encodeURIComponent(newFiltros.tipo_cuenta)
+        +'&ciudad='+encodeURIComponent(newFiltros.ciudad)),
+      api.get('/planes')
+    ]).then(([c,pl]) => {
+      setData(c.data.data||[]);
+      setTotal(c.data.total||0);
+      setPages(c.data.pages||1);
+      setPlanes(pl.data.data||[]);
+    }).finally(()=>setLoading(false));
+  };
+
+  const limpiarFiltros = () => {
+    const empty = {plan_id:'', activo:'', tipo_identificacion:'', tipo_cuenta:'', ciudad:''};
+    setFiltros(empty);
+    setSearch('');
+    setPage(1);
+    setLoading(true);
+    Promise.all([
+      api.get('/clientes?page=1&limit=50'),
+      api.get('/planes')
+    ]).then(([c,pl]) => {
+      setData(c.data.data||[]);
+      setTotal(c.data.total||0);
+      setPages(c.data.pages||1);
+      setPlanes(pl.data.data||[]);
+    }).finally(()=>setLoading(false));
+  };
+
+  const handleSearch = (val) => {
+    setSearch(val);
+    setPage(1);
+    load(1, val);
+  };
   const activos = data.filter(c=>c.activo==='yes');
 
   if (loading) return <div className="loading">Cargando clientes...</div>;
@@ -84,7 +139,7 @@ export default function Clientes() {
           <p style={{fontSize:13,color:'#94a3b8'}}>{data.length} clientes registrados</p>
         </div>
         <div style={{display:'flex',gap:10}}>
-          <button onClick={load} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Actualizar</button>
+          <button onClick={()=>load(page,search)} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Actualizar</button>
           <button onClick={()=>{setEditItem(null);setForm(emptyForm);setShowForm(true);}} style={{padding:'7px 16px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>+ Nuevo cliente</button>
         </div>
       </div>
@@ -162,7 +217,52 @@ export default function Clientes() {
       <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:10,marginBottom:16,padding:14,display:'flex',gap:12,alignItems:'center'}}>
         <input style={{flex:1,padding:'7px 12px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none'}}
           placeholder="Buscar por nombre, RUC o email..." value={search} onChange={e=>setSearch(e.target.value)} />
-        <span style={{fontSize:12,color:'#94a3b8',whiteSpace:'nowrap'}}>{filtered.length} de {data.length}</span>
+        <span style={{fontSize:12,color:'#94a3b8',whiteSpace:'nowrap'}}>{total.toLocaleString()} clientes</span>
+      </div>
+
+      {/* FILTROS */}
+      <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:10,padding:14,marginBottom:16}}>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
+          <div>
+            <label style={lbl}>Plan</label>
+            <select style={sel} value={filtros.plan_id} onChange={e=>handleFiltro('plan_id',e.target.value)}>
+              <option value="">Todos los planes</option>
+              <option value="null">Sin plan</option>
+              {planes.filter(p=>p.activo==='yes').map(p=>(
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Estado</label>
+            <select style={sel} value={filtros.activo} onChange={e=>handleFiltro('activo',e.target.value)}>
+              <option value="">Todos</option>
+              <option value="yes">Activo</option>
+              <option value="no">Inactivo</option>
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Tipo ID</label>
+            <select style={sel} value={filtros.tipo_identificacion} onChange={e=>handleFiltro('tipo_identificacion',e.target.value)}>
+              <option value="">Todos</option>
+              <option value="R">RUC</option>
+              <option value="C">Cedula</option>
+              <option value="P">Pasaporte</option>
+              <option value="O">Otro</option>
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Tipo cuenta</label>
+            <select style={sel} value={filtros.tipo_cuenta} onChange={e=>handleFiltro('tipo_cuenta',e.target.value)}>
+              <option value="">Todos</option>
+              <option value="Postpaid">Postpaid</option>
+              <option value="Prepaid">Prepaid</option>
+            </select>
+          </div>
+          <button onClick={limpiarFiltros} style={{padding:'6px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#64748b',fontSize:12,cursor:'pointer',fontFamily:'inherit',height:32}}>
+            Limpiar filtros
+          </button>
+        </div>
       </div>
 
       <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden'}}>
@@ -215,9 +315,38 @@ export default function Clientes() {
           </tbody>
         </table>
       </div>
+
+      {/* PAGINACION */}
+      {pages > 1 && (
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:'#fff',border:'1px solid #e2e8f0',borderRadius:10,marginTop:12}}>
+          <span style={{fontSize:12,color:'#94a3b8'}}>
+            Pagina {page} de {pages} · {total.toLocaleString()} clientes total
+          </span>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>{setPage(1);load(1,search);}} disabled={page===1}
+              style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:page===1?'#f8fafc':'#fff',color:'#475569',fontSize:13,cursor:page===1?'not-allowed':'pointer',fontFamily:'inherit'}}>«</button>
+            <button onClick={()=>{setPage(p=>p-1);load(page-1,search);}} disabled={page===1}
+              style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:page===1?'#f8fafc':'#fff',color:'#475569',fontSize:13,cursor:page===1?'not-allowed':'pointer',fontFamily:'inherit'}}>‹</button>
+            {Array.from({length:Math.min(5,pages)},(_,i)=>{
+              const p = Math.min(Math.max(page-2,1)+i, pages);
+              return (
+                <button key={p} onClick={()=>{setPage(p);load(p,search);}}
+                  style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:p===page?'#1d4ed8':'#fff',color:p===page?'#fff':'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={()=>{setPage(p=>p+1);load(page+1,search);}} disabled={page===pages}
+              style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:page===pages?'#f8fafc':'#fff',color:'#475569',fontSize:13,cursor:page===pages?'not-allowed':'pointer',fontFamily:'inherit'}}>›</button>
+            <button onClick={()=>{setPage(pages);load(pages,search);}} disabled={page===pages}
+              style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:page===pages?'#f8fafc':'#fff',color:'#475569',fontSize:13,cursor:page===pages?'not-allowed':'pointer',fontFamily:'inherit'}}>»</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 const lbl = {fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4,display:'block'};
+const sel = {padding:'6px 10px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:12,fontFamily:'inherit',color:'#0f172a',outline:'none',background:'#fff',height:32};
 const inp = {width:'100%',padding:'8px 12px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:13,fontFamily:'inherit',color:'#0f172a',outline:'none',boxSizing:'border-box'};
