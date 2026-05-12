@@ -13,6 +13,9 @@ const menuItems = [
     { label: 'Planes de cobro', path: '/planes' },
     { label: 'Series DID', path: '/did-series' },
   ]},
+  { section: 'ADMINISTRACION', items: [
+    { label: 'Usuarios', path: '/usuarios' },
+  ]},
   { section: 'CONFIGURACION', items: [
     { label: 'Ajustes', path: '/settings' },
   ]},
