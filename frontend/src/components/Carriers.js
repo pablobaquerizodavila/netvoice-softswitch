@@ -27,10 +27,19 @@ export default function Carriers() {
     } catch(e) { showMsg(e.response?.data?.detail||'Error','error'); }
   };
 
-  const handleDelete = async (id, nombre) => {
-    if (!window.confirm('Desactivar trunk '+nombre+'?')) return;
-    try { await api.delete('/trunks/'+id); showMsg('Trunk desactivado'); load(); }
-    catch(e) { showMsg('Error','error'); }
+  const handleToggle = async (id, nombre, activo) => {
+    const accion = activo === 'yes' ? 'Desactivar' : 'Activar';
+    if (!window.confirm(accion+' trunk '+nombre+'?')) return;
+    try {
+      if (activo === 'yes') {
+        await api.delete('/trunks/'+id);
+        showMsg('Trunk '+nombre+' desactivado');
+      } else {
+        await api.put('/trunks/'+id, {activo: 'yes'});
+        showMsg('Trunk '+nombre+' activado');
+      }
+      load();
+    } catch(e) { showMsg('Error','error'); }
   };
 
   const active = data.filter(t=>t.activo==='yes');
@@ -132,7 +141,13 @@ export default function Carriers() {
                 <td>
                   <div style={{display:'flex',gap:6}}>
                     <button onClick={()=>openEdit(t)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #e2e8f0',background:'#fff',color:'#475569',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Editar</button>
-                    <button onClick={()=>handleDelete(t.id,t.nombre)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #fee2e2',background:'#fff',color:'#c81e1e',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Desactivar</button>
+                    <button onClick={()=>handleToggle(t.id,t.nombre,t.activo)}
+                      style={{padding:'4px 10px',borderRadius:5,fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+                        border: t.activo==='yes' ? '1px solid #fee2e2' : '1px solid #bbf7d0',
+                        background:'#fff',
+                        color: t.activo==='yes' ? '#c81e1e' : '#057a55'}}>
+                      {t.activo==='yes' ? 'Desactivar' : 'Activar'}
+                    </button>
                   </div>
                 </td>
               </tr>

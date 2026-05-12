@@ -77,10 +77,19 @@ export default function Clientes() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id, nombre) => {
-    if (!window.confirm('Desactivar cliente '+nombre+'?')) return;
-    try { await api.delete('/clientes/'+id); showMsg('Cliente desactivado'); load(); }
-    catch(e) { showMsg('Error','error'); }
+  const handleToggle = async (id, nombre, activo) => {
+    const accion = activo === 'yes' ? 'Desactivar' : 'Activar';
+    if (!window.confirm(accion+' cliente '+nombre+'?')) return;
+    try {
+      if (activo === 'yes') {
+        await api.delete('/clientes/'+id);
+        showMsg('Cliente '+nombre+' desactivado');
+      } else {
+        await api.put('/clientes/'+id, {activo: 'yes'});
+        showMsg('Cliente '+nombre+' activado');
+      }
+      load(page, search);
+    } catch(e) { showMsg('Error','error'); }
   };
 
   const filtered = data;
@@ -307,7 +316,12 @@ export default function Clientes() {
                 <td>
                   <div style={{display:'flex',gap:6}}>
                     <button onClick={()=>openEdit(c)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #e2e8f0',background:'#fff',color:'#475569',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Editar</button>
-                    <button onClick={()=>handleDelete(c.id,c.nombre)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #fee2e2',background:'#fff',color:'#c81e1e',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Desactivar</button>
+                    <button onClick={()=>handleToggle(c.id,c.nombre,c.activo)}
+                    style={{padding:'4px 10px',borderRadius:5,fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+                      border: c.activo==='yes'?'1px solid #fee2e2':'1px solid #bbf7d0',
+                      background:'#fff', color: c.activo==='yes'?'#c81e1e':'#057a55'}}>
+                    {c.activo==='yes'?'Desactivar':'Activar'}
+                  </button>
                   </div>
                 </td>
               </tr>

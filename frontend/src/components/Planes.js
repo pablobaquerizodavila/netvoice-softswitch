@@ -37,10 +37,19 @@ export default function Planes() {
     } catch(e) { showMsg(e.response?.data?.detail||'Error','error'); }
   };
 
-  const handleDelete = async (id, nombre) => {
-    if (!window.confirm('Desactivar plan '+nombre+'?')) return;
-    try { await api.delete('/planes/'+id); showMsg('Plan desactivado'); load(); }
-    catch(e) { showMsg('Error','error'); }
+  const handleToggle = async (id, nombre, activo) => {
+    const accion = activo === 'yes' ? 'Desactivar' : 'Activar';
+    if (!window.confirm(accion+' plan '+nombre+'?')) return;
+    try {
+      if (activo === 'yes') {
+        await api.delete('/planes/'+id);
+        showMsg('Plan '+nombre+' desactivado');
+      } else {
+        await api.post('/planes/'+id+'/activar', {});
+        showMsg('Plan '+nombre+' activado');
+      }
+      load();
+    } catch(e) { showMsg('Error','error'); }
   };
 
   const f = (v) => parseFloat(v||0).toFixed(4);
@@ -152,7 +161,12 @@ export default function Planes() {
               <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:20,background:p.activo==='yes'?'#f0fdf4':'#fef2f2',color:p.activo==='yes'?'#057a55':'#c81e1e'}}>
                 <span style={{width:6,height:6,borderRadius:'50%',background:'currentColor',display:'inline-block'}}/>{p.activo==='yes'?'Activo':'Inactivo'}
               </span>
-              <button onClick={()=>handleDelete(p.id,p.nombre)} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #fee2e2',background:'#fff',color:'#c81e1e',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Desactivar</button>
+              <button onClick={()=>handleToggle(p.id,p.nombre,p.activo)}
+                style={{padding:'5px 12px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+                  border: p.activo==='yes'?'1px solid #fee2e2':'1px solid #bbf7d0',
+                  background:'#fff', color: p.activo==='yes'?'#c81e1e':'#057a55'}}>
+                {p.activo==='yes'?'Desactivar':'Activar'}
+              </button>
             </div>
           </div>
         ))}

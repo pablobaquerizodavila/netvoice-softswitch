@@ -211,6 +211,13 @@ class ClienteCreate(BaseModel):
     plan_id: Optional[int] = None
     credito_limite: float = 0
 
+
+@app.post("/planes/{plan_id}/activar")
+def activar_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db.execute(text("UPDATE planes SET activo='yes' WHERE id = :id"), {"id": plan_id})
+    db.commit()
+    return {"status": "ok", "message": "Plan activado"}
+
 @app.get("/clientes")
 def get_clientes(db: Session = Depends(get_db), page: int = 1, limit: int = 50, search: str = "", plan_id: str = "", activo: str = "", tipo_identificacion: str = "", tipo_cuenta: str = "", ciudad: str = ""):
     offset = (page - 1) * limit
