@@ -235,6 +235,30 @@ def delete_cliente(cliente_id: int, db: Session = Depends(get_db), current_user:
     db.commit()
     return {"status": "ok", "message": "Cliente desactivado"}
 
+
+@app.put("/clientes/{cliente_id}")
+def update_cliente(cliente_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    fields = {k:v for k,v in data.items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=400, detail="Sin campos para actualizar")
+    sets = ", ".join([f"{k} = :{k}" for k in fields])
+    fields["id"] = cliente_id
+    db.execute(text(f"UPDATE clientes SET {sets} WHERE id = :id"), fields)
+    db.commit()
+    return {"status": "ok", "message": "Cliente actualizado"}
+
+
+@app.put("/clientes/{cliente_id}")
+def update_cliente(cliente_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    fields = {k:v for k,v in data.items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=400, detail="Sin campos para actualizar")
+    sets = ", ".join([f"{k} = :{k}" for k in fields])
+    fields["id"] = cliente_id
+    db.execute(text(f"UPDATE clientes SET {sets} WHERE id = :id"), fields)
+    db.commit()
+    return {"status": "ok", "message": "Cliente actualizado"}
+
 # ─── DID SERIES ───────────────────────────────────────
 class DIDCreate(BaseModel):
     trunk_id: Optional[int] = None
@@ -388,3 +412,72 @@ def liberar_did(did_id: int, db: Session = Depends(get_db), current_user: User =
     db.execute(text("UPDATE did_ranges SET cantidad_usada = cantidad_usada - 1 WHERE id = :id"), {"id": did[0]})
     db.commit()
     return {"status": "ok", "message": "DID liberado"}
+
+# ─── METRICAS ─────────────────────────────────────────
+@app.get("/metricas/resumen")
+def get_metricas_resumen(meses: int = 6, db: Session = Depends(get_db)):
+    result = db.execute(text("""
+        SELECT
+            COUNT(*) as total_llamadas,
+            SUM(CASE WHEN dcontext != 'internal' AND channel LIKE 'PJSIP/%' AND dstchannel LIKE 'PJSIP/trunk%' THEN 1 ELSE 0 END) as salientes,
+            SUM(CASE WHEN dcontext != 'internal' AND dstchannel NOT LIKE 'PJSIP/trunk%' THEN 1 ELSE 0 END) as entrantes,
+            SUM(CASE WHEN dcontext = 'internal' THEN 1 ELSE 0 END) as onnet,
+            ROUND(SUM(billsec)/60, 2) as total_minutos,
+            SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END) as contestadas,
+            SUM(CASE WHEN disposition != 'ANSWERED' THEN 1 ELSE 0 END) as no_contestadas
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL :meses MONTH)
+    """), {"meses": meses})
+    return dict(result.fetchone()._mapping)
+
+@app.get("/metricas/por-mes")
+def get_metricas_por_mes(meses: int = 6, db: Session = Depends(get_db)):
+    result = db.execute(text("""
+        SELECT
+            DATE_FORMAT(calldate, '%Y-%m') as mes,
+            COUNT(*) as llamadas,
+            ROUND(SUM(billsec)/60, 2) as minutos,
+            SUM(CASE WHEN dcontext = 'CEL' THEN billsec ELSE 0 END)/60 as min_cel,
+            SUM(CASE WHEN dcontext = 'LOC' THEN billsec ELSE 0 END)/60 as min_loc,
+            SUM(CASE WHEN dcontext = 'NAC' THEN billsec ELSE 0 END)/60 as min_nac,
+            SUM(CASE WHEN dcontext = 'internal' THEN billsec ELSE 0 END)/60 as min_onnet
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL :meses MONTH)
+        GROUP BY DATE_FORMAT(calldate, '%Y-%m')
+        ORDER BY mes
+    """), {"meses": meses})
+    return {"data": [dict(r._mapping) for r in result.fetchall()]}
+
+@app.get("/metricas/por-contexto")
+def get_metricas_por_contexto(meses: int = 6, db: Session = Depends(get_db)):
+    result = db.execute(text("""
+        SELECT
+            dcontext as contexto,
+            COUNT(*) as llamadas,
+            ROUND(SUM(billsec)/60, 2) as minutos
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL :meses MONTH)
+        GROUP BY dcontext
+        ORDER BY minutos DESC
+    """), {"meses": meses})
+    return {"data": [dict(r._mapping) for r in result.fetchall()]}
+
+@app.get("/metricas/top-origenes")
+def get_top_origenes(meses: int = 6, limit: int = 10, db: Session = Depends(get_db)):
+    result = db.execute(text("""
+        SELECT src as numero, COUNT(*) as llamadas, ROUND(SUM(billsec)/60,2) as minutos
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL :meses MONTH)
+        GROUP BY src ORDER BY minutos DESC LIMIT :limit
+    """), {"meses": meses, "limit": limit})
+    return {"data": [dict(r._mapping) for r in result.fetchall()]}
+
+@app.get("/metricas/top-destinos")
+def get_top_destinos(meses: int = 6, limit: int = 10, db: Session = Depends(get_db)):
+    result = db.execute(text("""
+        SELECT dst as numero, COUNT(*) as llamadas, ROUND(SUM(billsec)/60,2) as minutos
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL :meses MONTH)
+        GROUP BY dst ORDER BY minutos DESC LIMIT :limit
+    """), {"meses": meses, "limit": limit})
+    return {"data": [dict(r._mapping) for r in result.fetchall()]}

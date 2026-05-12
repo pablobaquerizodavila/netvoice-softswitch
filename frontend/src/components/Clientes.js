@@ -6,9 +6,10 @@ export default function Clientes() {
   const [planes, setPlanes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editItem, setEditItem] = useState(null);
   const [msg, setMsg] = useState(null);
   const [search, setSearch] = useState('');
-  const emptyForm = {nombre:'',ruc:'',email:'',telefono:'',plan_id:'',credito_limite:'0'};
+  const emptyForm = {nombre:'',ruc:'',email:'',telefono:'',plan_id:'',credito_limite:'0',direccion:'',celular:'',nombre_comercial:'',ciudad_codigo:'',observaciones:''};
   const [form, setForm] = useState(emptyForm);
 
   const load = () => {
@@ -24,16 +25,40 @@ export default function Clientes() {
   const handleSubmit = async () => {
     if (!form.nombre) return showMsg('El nombre es requerido','error');
     try {
-      await api.post('/clientes', {
-        ...form,
-        plan_id: form.plan_id ? parseInt(form.plan_id) : null,
-        credito_limite: parseFloat(form.credito_limite)||0,
-      });
-      showMsg('Cliente '+form.nombre+' creado');
+      if (editItem) {
+        await api.put('/clientes/'+editItem.id, {
+          ...form,
+          plan_id: form.plan_id ? parseInt(form.plan_id) : null,
+          credito_limite: parseFloat(form.credito_limite)||0,
+        });
+        showMsg('Cliente '+form.nombre+' actualizado');
+      } else {
+        await api.post('/clientes', {
+          ...form,
+          plan_id: form.plan_id ? parseInt(form.plan_id) : null,
+          credito_limite: parseFloat(form.credito_limite)||0,
+        });
+        showMsg('Cliente '+form.nombre+' creado');
+      }
       setShowForm(false);
+      setEditItem(null);
       setForm(emptyForm);
       load();
     } catch(e) { showMsg(e.response?.data?.detail||'Error','error'); }
+  };
+
+  const openEdit = (c) => {
+    setEditItem(c);
+    setForm({
+      nombre: c.nombre||'', ruc: c.ruc||'', email: c.email||'',
+      telefono: c.telefono||'', plan_id: c.plan_id||'',
+      credito_limite: c.credito_limite||'0',
+      direccion: c.direccion||'', celular: c.celular||'',
+      nombre_comercial: c.nombre_comercial||'',
+      ciudad_codigo: c.ciudad_codigo||'',
+      observaciones: c.observaciones||'',
+    });
+    setShowForm(true);
   };
 
   const handleDelete = async (id, nombre) => {
@@ -60,7 +85,7 @@ export default function Clientes() {
         </div>
         <div style={{display:'flex',gap:10}}>
           <button onClick={load} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Actualizar</button>
-          <button onClick={()=>{setForm(emptyForm);setShowForm(true);}} style={{padding:'7px 16px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>+ Nuevo cliente</button>
+          <button onClick={()=>{setEditItem(null);setForm(emptyForm);setShowForm(true);}} style={{padding:'7px 16px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>+ Nuevo cliente</button>
         </div>
       </div>
 
@@ -78,7 +103,7 @@ export default function Clientes() {
       {showForm && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
           <div style={{background:'#fff',borderRadius:14,padding:28,width:500,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
-            <h2 style={{fontSize:17,fontWeight:700,color:'#0f172a',marginBottom:20}}>Nuevo cliente</h2>
+            <h2 style={{fontSize:17,fontWeight:700,color:'#0f172a',marginBottom:20}}>{editItem ? 'Editar cliente' : 'Nuevo cliente'}</h2>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
               <div style={{gridColumn:'1/-1'}}>
                 <label style={lbl}>Nombre / Razon social *</label>
@@ -109,10 +134,26 @@ export default function Clientes() {
                 <label style={lbl}>Limite de credito (USD)</label>
                 <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.credito_limite} onChange={e=>setForm({...form,credito_limite:e.target.value})} />
               </div>
+              <div style={{gridColumn:'1/-1'}}>
+                <label style={lbl}>Direccion</label>
+                <input style={inp} placeholder="Direccion del cliente" value={form.direccion} onChange={e=>setForm({...form,direccion:e.target.value})} />
+              </div>
+              <div>
+                <label style={lbl}>Celular</label>
+                <input style={inp} placeholder="09XXXXXXXX" value={form.celular} onChange={e=>setForm({...form,celular:e.target.value})} />
+              </div>
+              <div>
+                <label style={lbl}>Nombre comercial</label>
+                <input style={inp} placeholder="Nombre comercial" value={form.nombre_comercial} onChange={e=>setForm({...form,nombre_comercial:e.target.value})} />
+              </div>
+              <div style={{gridColumn:'1/-1'}}>
+                <label style={lbl}>Observaciones</label>
+                <input style={inp} placeholder="Notas u observaciones" value={form.observaciones} onChange={e=>setForm({...form,observaciones:e.target.value})} />
+              </div>
             </div>
             <div style={{display:'flex',gap:10,marginTop:24,justifyContent:'flex-end'}}>
               <button onClick={()=>setShowForm(false)} style={{padding:'8px 18px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
-              <button onClick={handleSubmit} style={{padding:'8px 18px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Crear cliente</button>
+              <button onClick={handleSubmit} style={{padding:'8px 18px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>{editItem ? 'Guardar cambios' : 'Crear cliente'}</button>
             </div>
           </div>
         </div>
@@ -164,7 +205,10 @@ export default function Clientes() {
                   </span>
                 </td>
                 <td>
-                  <button onClick={()=>handleDelete(c.id,c.nombre)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #fee2e2',background:'#fff',color:'#c81e1e',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Desactivar</button>
+                  <div style={{display:'flex',gap:6}}>
+                    <button onClick={()=>openEdit(c)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #e2e8f0',background:'#fff',color:'#475569',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Editar</button>
+                    <button onClick={()=>handleDelete(c.id,c.nombre)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #fee2e2',background:'#fff',color:'#c81e1e',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Desactivar</button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -12,6 +12,7 @@ import Carriers from './components/Carriers';
 import Planes from './components/Planes';
 import Clientes from './components/Clientes';
 import DIDSeries from './components/DIDSeries';
+import Metricas from './components/Metricas';
 
 function Layout({ children }) {
   return (
@@ -45,6 +46,7 @@ export default function App() {
                     <Route path="/planes" element={<Planes />} />
                     <Route path="/clientes" element={<Clientes />} />
                     <Route path="/did-series" element={<DIDSeries />} />
+                    <Route path="/metrics" element={<Metricas />} />
                 </Routes>
               </Layout>
             </PrivateRoute>
