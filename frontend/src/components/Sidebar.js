@@ -79,6 +79,7 @@ const menuItems = [
     items: [
       { label: 'Carriers / Trunks', path: '/carriers',   icon: <Share2 /> },
       { label: 'Clientes',          path: '/clientes',   icon: <Users /> },
+      { label: 'Clientes V2',       path: '/clientes-v2',icon: <Users /> },
       { label: 'Planes de cobro',   path: '/planes',     icon: <CreditCard /> },
       { label: 'Series DID',        path: '/did-series', icon: <Hash /> },
     ],

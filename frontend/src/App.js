@@ -1,4 +1,5 @@
 import './App.css';
+import ClientesV2 from './components/ClientesV2';
 import SACLogin from './sac/SACLogin';
 import SACDashboard from './sac/SACDashboard';
 import PortalRegistro from './portal/PortalRegistro';
@@ -73,6 +74,7 @@ export default function App() {
                   <Route path="/network"    element={<NetworkMap />} />
                   <Route path="/audit"     element={<AuditLog />} />
                   <Route path="/softphone"  element={<Softphone />} />
+                  <Route path="/clientes-v2" element={<ClientesV2 />} />
                   <Route path="/usuarios"   element={<Usuarios />} />
                 </Routes>
               </Layout>
