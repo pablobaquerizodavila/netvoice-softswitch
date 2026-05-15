@@ -1,160 +1,312 @@
-import { useState, useEffect } from 'react';
-import api from '../api';
+import { useState, useEffect, useCallback } from "react";
+import api from "../api";
 
-export default function Carriers() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editItem, setEditItem] = useState(null);
-  const [msg, setMsg] = useState(null);
-  const [showPwd, setShowPwd] = useState(false);
-  const [form, setForm] = useState({nombre:'',proveedor:'',host:'',usuario:'',password:'',prefijo_salida:'0',canales_max:30,transporte:'udp'});
+async function safe(fn) { try { return await fn(); } catch { return null; } }
 
-  const load = () => { setLoading(true); api.get('/trunks').then(r=>setData(r.data.data||[])).finally(()=>setLoading(false)); };
-  useEffect(()=>{ load(); },[]);
+const TRANSPORTES = ["udp","tcp","tls","ws","wss"];
 
-  const showMsg = (text,type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),4000); };
+function Alert({ msg, onClose }) {
+  if (!msg) return null;
+  const cls = {success:"nv-alert-ok",error:"nv-alert-err",warn:"nv-alert-warn"}[msg.type]||"nv-alert-ok";
+  return (
+    <div className={"nv-alert "+cls} style={{ marginBottom:14 }}>
+      <span style={{ flex:1 }}>{msg.text}</span>
+      <button onClick={onClose} style={{ background:"none",border:"none",cursor:"pointer",color:"inherit",fontSize:14 }}>✕</button>
+    </div>
+  );
+}
 
-  const openCreate = () => { setEditItem(null); setForm({nombre:'',proveedor:'',host:'',usuario:'',password:'',prefijo_salida:'0',canales_max:30,transporte:'udp'}); setShowForm(true); };
-  const openEdit = (t) => { setEditItem(t); setForm({nombre:t.nombre,proveedor:t.proveedor||'',host:t.host,usuario:t.usuario||'',password:t.password||'',prefijo_salida:t.prefijo_salida,canales_max:t.canales_max,transporte:t.transporte}); setShowForm(true); };
+function TrunkModal({ trunk, onClose, onSave }) {
+  const isEdit = !!trunk?.id;
+  const empty = { nombre:"",proveedor:"",host:"",usuario:"",password:"",prefijo_salida:"0",canales_max:30,transporte:"udp" };
+  const [form,setForm] = useState(isEdit ? {...empty,...trunk} : empty);
+  const [busy,setBusy] = useState(false);
+  const [err,setErr]   = useState(null);
+  const [showPwd,setShowPwd] = useState(false);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  const handleSubmit = async () => {
-    if (!form.nombre || !form.host) return showMsg('Nombre y host son requeridos','error');
+  const submit = async () => {
+    if (!form.nombre || !form.host) return setErr("Nombre y host son requeridos");
+    setBusy(true); setErr(null);
     try {
-      if (editItem) { await api.put('/trunks/'+editItem.id, form); showMsg('Trunk actualizado'); }
-      else { await api.post('/trunks', form); showMsg('Trunk '+form.nombre+' creado'); }
-      setShowForm(false); load();
-    } catch(e) { showMsg(e.response?.data?.detail||'Error','error'); }
+      if (isEdit) await api.put("/trunks/"+trunk.id, form);
+      else        await api.post("/trunks", form);
+      onSave();
+    } catch(e) { setErr(e?.response?.data?.detail||"Error al guardar"); }
+    finally { setBusy(false); }
   };
-
-  const handleToggle = async (id, nombre, activo) => {
-    const accion = activo === 'yes' ? 'Desactivar' : 'Activar';
-    if (!window.confirm(accion+' trunk '+nombre+'?')) return;
-    try {
-      if (activo === 'yes') {
-        await api.delete('/trunks/'+id);
-        showMsg('Trunk '+nombre+' desactivado');
-      } else {
-        await api.put('/trunks/'+id, {activo: 'yes'});
-        showMsg('Trunk '+nombre+' activado');
-      }
-      load();
-    } catch(e) { showMsg('Error','error'); }
-  };
-
-  const active = data.filter(t=>t.activo==='yes');
-  const inactive = data.filter(t=>t.activo==='no');
-
-  if (loading) return <div className="loading">Cargando carriers...</div>;
 
   return (
-    <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
-        <div>
-          <h1 style={{fontSize:20,fontWeight:700,color:'#0f172a',marginBottom:4}}>Carriers / Trunks</h1>
-          <p style={{fontSize:13,color:'#94a3b8'}}>Troncales SIP para enrutamiento de llamadas</p>
+    <div className="nv-modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="nv-modal" style={{ maxWidth:580 }}>
+        <div className="nv-modal-header">
+          <span className="nv-modal-title">{isEdit?"Editar trunk "+trunk.nombre:"Nuevo trunk SIP"}</span>
+          <button className="nv-modal-close" onClick={onClose}>✕</button>
         </div>
-        <div style={{display:'flex',gap:10}}>
-          <button onClick={load} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Actualizar</button>
-          <button onClick={openCreate} style={{padding:'7px 16px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>+ Nuevo trunk</button>
+        {err && <div className="nv-alert nv-alert-err" style={{ marginBottom:14 }}>{err}</div>}
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Nombre *</label>
+            <input className="nv-input" value={form.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="ej: CNT-Principal"/>
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Proveedor</label>
+            <input className="nv-input" value={form.proveedor||""} onChange={e=>set("proveedor",e.target.value)} placeholder="ej: CNT EP"/>
+          </div>
+        </div>
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Host / IP *</label>
+            <input className="nv-input" value={form.host} onChange={e=>set("host",e.target.value)} placeholder="ej: sip.proveedor.com" style={{ fontFamily:"var(--font-mono)" }}/>
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Transporte</label>
+            <select className="nv-select" value={form.transporte} onChange={e=>set("transporte",e.target.value)}>
+              {TRANSPORTES.map(t=><option key={t} value={t}>{t.toUpperCase()}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Usuario SIP</label>
+            <input className="nv-input" value={form.usuario||""} onChange={e=>set("usuario",e.target.value)} placeholder="Autenticación"/>
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Password SIP</label>
+            <div style={{ position:"relative" }}>
+              <input className="nv-input" type={showPwd?"text":"password"} value={form.password||""} onChange={e=>set("password",e.target.value)} style={{ paddingRight:36 }}/>
+              <button type="button" onClick={()=>setShowPwd(p=>!p)} style={{ position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:13 }}>{showPwd?"○":"●"}</button>
+            </div>
+          </div>
+        </div>
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Prefijo salida</label>
+            <input className="nv-input" value={form.prefijo_salida} onChange={e=>set("prefijo_salida",e.target.value)} placeholder="0" style={{ fontFamily:"var(--font-mono)" }}/>
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Canales máx.</label>
+            <input className="nv-input" type="number" min="1" max="9999" value={form.canales_max} onChange={e=>set("canales_max",parseInt(e.target.value)||30)}/>
+          </div>
+        </div>
+        <div className="nv-modal-footer">
+          <button className="nv-btn nv-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="nv-btn nv-btn-primary" onClick={submit} disabled={busy}>
+            {busy?<span className="nv-spinner"/>:(isEdit?"✓ Guardar cambios":"+ Crear trunk")}
+          </button>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {msg && <div style={{padding:'10px 16px',borderRadius:8,marginBottom:16,fontSize:13,fontWeight:500,background:msg.type==='error'?'#fef2f2':'#f0fdf4',color:msg.type==='error'?'#c81e1e':'#057a55',border:'1px solid '+(msg.type==='error'?'#fecaca':'#bbf7d0')}}>{msg.text}</div>}
+function TrunkCard({ trunk, cdrStats, onEdit, onToggle, onDelete }) {
+  const activo = trunk.activo === "yes";
+  const calls  = cdrStats?.llamadas || 0;
+  const mins   = cdrStats?.minutos  || 0;
+  return (
+    <div style={{
+      background:"var(--bg-surface)", border:"1px solid var(--border)",
+      borderRadius:"var(--r-lg)", padding:"16px 18px",
+      borderLeft:"3px solid "+(activo?"var(--success)":"var(--border)"),
+      transition:"all var(--t)",
+    }}>
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{
+            width:40, height:40, borderRadius:"var(--r-sm)",
+            background:activo?"var(--success-bg)":"var(--bg-raised)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize:18, flexShrink:0,
+          }}>{activo?"⊕":"⊝"}</div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"var(--text-primary)" }}>{trunk.nombre}</div>
+            <div style={{ fontSize:10, color:"var(--text-muted)", fontFamily:"var(--font-mono)", marginTop:1 }}>{trunk.host}</div>
+          </div>
+        </div>
+        <span className={"nv-badge "+(activo?"nv-badge-ok":"nv-badge-muted")}>
+          <span className="dot"/>{activo?"Activo":"Inactivo"}
+        </span>
+      </div>
 
-      <div style={{display:'flex',gap:12,marginBottom:20}}>
-        {[{label:'Total',val:data.length,bg:'#f1f5f9',color:'#475569'},{label:'Activos',val:active.length,bg:'#f0fdf4',color:'#057a55'},{label:'Inactivos',val:inactive.length,bg:'#fef2f2',color:'#c81e1e'},{label:'Canales',val:active.reduce((s,t)=>s+t.canales_max,0),bg:'#eff6ff',color:'#1d4ed8'}].map(({label,val,bg,color})=>(
-          <div key={label} style={{background:bg,borderRadius:8,padding:'10px 18px',minWidth:110}}>
-            <div style={{fontSize:11,color,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:2}}>{label}</div>
-            <div style={{fontSize:22,fontWeight:700,color,fontFamily:'monospace'}}>{val}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
+        {[
+          { lbl:"Proveedor", val:trunk.proveedor||"—" },
+          { lbl:"Transporte", val:(trunk.transporte||"udp").toUpperCase() },
+          { lbl:"Canales máx.", val:trunk.canales_max||"—" },
+          { lbl:"Prefijo", val:trunk.prefijo_salida||"0" },
+          { lbl:"Llamadas (30d)", val:calls.toLocaleString() },
+          { lbl:"Minutos (30d)", val:Math.round(mins)+" min" },
+        ].map(({lbl,val})=>(
+          <div key={lbl} style={{ background:"var(--bg-raised)", borderRadius:"var(--r-sm)", padding:"8px 10px" }}>
+            <div style={{ fontSize:9, textTransform:"uppercase", letterSpacing:".07em", color:"var(--text-muted)", marginBottom:2 }}>{lbl}</div>
+            <div style={{ fontSize:12, fontWeight:600, color:"var(--text-primary)", fontFamily:lbl==="Canales máx."||lbl==="Prefijo"?"var(--font-mono)":"inherit" }}>{val}</div>
           </div>
         ))}
       </div>
 
-      {showForm && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
-          <div style={{background:'#fff',borderRadius:14,padding:28,width:480,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
-            <h2 style={{fontSize:17,fontWeight:700,color:'#0f172a',marginBottom:20}}>{editItem?'Editar trunk '+editItem.nombre:'Nuevo trunk SIP'}</h2>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-              {[{label:'Nombre *',key:'nombre',ph:'ej. Trunk-CNT-01',full:true},{label:'Proveedor',key:'proveedor',ph:'ej. CNT Ecuador',full:true},{label:'Host SIP *',key:'host',ph:'sip.proveedor.com',full:true},{label:'Usuario SIP',key:'usuario',ph:'usuario'},{label:'Prefijo salida',key:'prefijo_salida',ph:'0'},{label:'Canales max',key:'canales_max',ph:'30',type:'number'}].map(({label,key,ph,full,type})=>(
-                <div key={key} style={full?{gridColumn:'1/-1'}:{}}>
-                  <label style={{fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4,display:'block'}}>{label}</label>
-                  <input style={{width:'100%',padding:'8px 12px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
-                    type={type||'text'} placeholder={ph} value={form[key]}
-                    onChange={e=>setForm({...form,[key]:type==='number'?parseInt(e.target.value)||0:e.target.value})} />
-                </div>
-              ))}
-              <div style={{gridColumn:'1/-1'}}>
-                <label style={{fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4,display:'block'}}>Password SIP</label>
-                <div style={{position:'relative'}}>
-                  <input style={{width:'100%',padding:'8px 40px 8px 12px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}
-                    type={showPwd?'text':'password'} placeholder="Password del trunk" value={form.password}
-                    onChange={e=>setForm({...form,password:e.target.value})} />
-                  <button type="button" onClick={()=>setShowPwd(!showPwd)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'#94a3b8',padding:4,display:'flex',alignItems:'center'}}>
-                    {showPwd?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4,display:'block'}}>Transporte</label>
-                <select style={{width:'100%',padding:'8px 12px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none'}} value={form.transporte} onChange={e=>setForm({...form,transporte:e.target.value})}>
-                  <option value="udp">UDP</option>
-                  <option value="tcp">TCP</option>
-                  <option value="tls">TLS</option>
-                </select>
-              </div>
+      <div style={{ display:"flex", gap:6 }}>
+        <button className="nv-btn nv-btn-ghost nv-btn-sm" style={{ flex:1 }} onClick={()=>onEdit(trunk)}>✎ Editar</button>
+        <button className={"nv-btn nv-btn-sm "+(activo?"nv-btn-warning":"nv-btn-secondary")} onClick={()=>onToggle(trunk)}
+          style={{ background:activo?"var(--warning-bg)":"var(--bg-raised)", color:activo?"var(--warning)":"var(--text-secondary)", borderColor:activo?"rgba(245,166,35,.3)":"var(--border)" }}>
+          {activo?"⏸ Desactivar":"▶ Activar"}
+        </button>
+        <button className="nv-btn nv-btn-danger nv-btn-sm" onClick={()=>onDelete(trunk)} title="Eliminar">✕</button>
+      </div>
+    </div>
+  );
+}
+
+export default function Carriers() {
+  const [data,   setData]   = useState([]);
+  const [stats,  setStats]  = useState({});
+  const [loading,setLoading]= useState(true);
+  const [modal,  setModal]  = useState(null);
+  const [target, setTarget] = useState(null);
+  const [msg,    setMsg]    = useState(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [delConf,setDelConf]= useState(null);
+
+  const showMsg = (text,type="success") => { setMsg({text,type}); setTimeout(()=>setMsg(null),4000); };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [tr, cdr] = await Promise.all([
+      safe(()=>api.get("/trunks")),
+      safe(()=>api.get("/metricas/por-contexto?meses=1")),
+    ]);
+    setData(tr?.data?.data||[]);
+    const st = {};
+    (cdr?.data?.data||[]).forEach(r=>{ st[r.contexto]={llamadas:r.llamadas,minutos:r.minutos}; });
+    setStats(st);
+    setLoading(false);
+  }, []);
+
+  useEffect(()=>{ load(); },[load]);
+
+  const handleToggle = async (trunk) => {
+    try {
+      await api.put("/trunks/"+trunk.id, { activo: trunk.activo==="yes"?"no":"yes" });
+      showMsg("Trunk "+(trunk.activo==="yes"?"desactivado":"activado"));
+      load();
+    } catch(e) { showMsg(e?.response?.data?.detail||"Error","error"); }
+  };
+
+  const handleDelete = async (trunk) => {
+    try {
+      await api.delete("/trunks/"+trunk.id);
+      showMsg("Trunk "+trunk.nombre+" eliminado");
+      load();
+    } catch(e) { showMsg(e?.response?.data?.detail||"Error al eliminar","error"); }
+    setDelConf(null);
+  };
+
+  const filtered = data.filter(t=>{
+    const q = search.toLowerCase();
+    const matchQ = !q||t.nombre?.toLowerCase().includes(q)||t.host?.toLowerCase().includes(q)||t.proveedor?.toLowerCase().includes(q);
+    const matchF = filter==="all"||(filter==="active"&&t.activo==="yes")||(filter==="inactive"&&t.activo!=="yes");
+    return matchQ&&matchF;
+  });
+
+  const activos   = data.filter(t=>t.activo==="yes").length;
+  const inactivos = data.length - activos;
+  const totalCanales = data.filter(t=>t.activo==="yes").reduce((s,t)=>s+(t.canales_max||0),0);
+
+  return (
+    <div>
+      <div className="nv-page-header">
+        <div>
+          <div className="nv-page-title">Carriers / Troncales SIP</div>
+          <div className="nv-page-sub">{data.length} trunks configurados · {activos} activos</div>
+        </div>
+        <div className="nv-page-actions">
+          <button className="nv-btn nv-btn-secondary nv-btn-sm" onClick={load} disabled={loading}>
+            {loading?<span className="nv-spinner"/>:"↺"} Actualizar
+          </button>
+          <button className="nv-btn nv-btn-primary" onClick={()=>setModal("crear")}>+ Nuevo trunk</button>
+        </div>
+      </div>
+
+      <div className="nv-kpi-grid" style={{ marginBottom:16 }}>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Total trunks</div>
+          <div className="nv-kpi-value" style={{ color:"var(--brand)" }}>{data.length}</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Activos</div>
+          <div className="nv-kpi-value" style={{ color:"var(--success)" }}>{activos}</div>
+          <div className="nv-kpi-sub">SIP trunks online</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Inactivos</div>
+          <div className="nv-kpi-value" style={{ color:"var(--text-muted)" }}>{inactivos}</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Canales totales</div>
+          <div className="nv-kpi-value" style={{ color:"var(--info)" }}>{totalCanales}</div>
+          <div className="nv-kpi-sub">En trunks activos</div>
+        </div>
+      </div>
+
+      <Alert msg={msg} onClose={()=>setMsg(null)}/>
+
+      <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
+        <div className="nv-search" style={{ flex:1, minWidth:200 }}>
+          <span style={{ color:"var(--text-muted)", fontSize:12 }}>⌕</span>
+          <input placeholder="Buscar por nombre, host o proveedor..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          {search&&<button onClick={()=>setSearch("")} style={{ background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer" }}>✕</button>}
+        </div>
+        <div style={{ display:"flex", gap:4 }}>
+          {[["all","Todos"],["active","Activos"],["inactive","Inactivos"]].map(([k,l])=>(
+            <button key={k} className={"nv-btn nv-btn-sm "+(filter===k?"nv-btn-secondary":"nv-btn-ghost")} onClick={()=>setFilter(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading&&!data.length ? (
+        <div className="nv-loading"><span className="nv-spinner"/><span>Cargando trunks...</span></div>
+      ) : filtered.length===0 ? (
+        <div className="nv-card" style={{ textAlign:"center", padding:"48px 20px" }}>
+          <div style={{ fontSize:32, opacity:.2, marginBottom:12 }}>⊕</div>
+          <div style={{ fontSize:13, color:"var(--text-muted)", marginBottom:16 }}>{search?"Sin resultados":"Sin trunks configurados"}</div>
+          {!search&&<button className="nv-btn nv-btn-primary" onClick={()=>setModal("crear")}>+ Crear primer trunk</button>}
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))", gap:14 }}>
+          {filtered.map(t=>(
+            <TrunkCard key={t.id} trunk={t} cdrStats={stats[t.nombre]}
+              onEdit={t=>{ setTarget(t); setModal("editar"); }}
+              onToggle={handleToggle}
+              onDelete={t=>setDelConf(t)}/>
+          ))}
+        </div>
+      )}
+
+      {(modal==="crear"||modal==="editar") && (
+        <TrunkModal
+          trunk={modal==="editar"?target:null}
+          onClose={()=>setModal(null)}
+          onSave={()=>{ setModal(null); load(); showMsg(modal==="crear"?"Trunk creado":"Trunk actualizado"); }}/>
+      )}
+
+      {delConf&&(
+        <div className="nv-modal-overlay" onClick={()=>setDelConf(null)}>
+          <div className="nv-modal" style={{ maxWidth:380 }} onClick={e=>e.stopPropagation()}>
+            <div className="nv-modal-header">
+              <span className="nv-modal-title">Eliminar trunk</span>
+              <button className="nv-modal-close" onClick={()=>setDelConf(null)}>✕</button>
             </div>
-            <div style={{display:'flex',gap:10,marginTop:24,justifyContent:'flex-end'}}>
-              <button onClick={()=>setShowForm(false)} style={{padding:'8px 18px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
-              <button onClick={handleSubmit} style={{padding:'8px 18px',borderRadius:7,border:'none',background:'#1d4ed8',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>{editItem?'Guardar cambios':'Crear trunk'}</button>
+            <p style={{ fontSize:13, color:"var(--text-secondary)", lineHeight:1.6 }}>
+              ¿Eliminar el trunk <span style={{ fontFamily:"var(--font-mono)", color:"var(--danger)" }}>{delConf.nombre}</span>? Esta acción no se puede deshacer.
+            </p>
+            <div className="nv-modal-footer">
+              <button className="nv-btn nv-btn-ghost" onClick={()=>setDelConf(null)}>Cancelar</button>
+              <button className="nv-btn nv-btn-danger" onClick={()=>handleDelete(delConf)}>Eliminar</button>
             </div>
           </div>
         </div>
       )}
-
-      <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden'}}>
-        <table className="data-table" style={{width:'100%'}}>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Proveedor</th>
-              <th>Host</th>
-              <th>Usuario</th>
-              <th>Prefijo</th>
-              <th>Canales</th>
-              <th>Transporte</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((t,i)=>(
-              <tr key={i}>
-                <td style={{fontWeight:600}}>{t.nombre}</td>
-                <td style={{color:'#64748b'}}>{t.proveedor||'—'}</td>
-                <td style={{fontFamily:'monospace',fontSize:12}}>{t.host}</td>
-                <td style={{fontFamily:'monospace',fontSize:12}}>{t.usuario||'—'}</td>
-                <td style={{textAlign:'center'}}>{t.prefijo_salida}</td>
-                <td style={{textAlign:'center',fontFamily:'monospace'}}>{t.canales_max}</td>
-                <td><span style={{background:'#f1f5f9',color:'#475569',fontSize:11,fontWeight:600,padding:'2px 8px',borderRadius:4,textTransform:'uppercase'}}>{t.transporte}</span></td>
-                <td><span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:20,background:t.activo==='yes'?'#f0fdf4':'#fef2f2',color:t.activo==='yes'?'#057a55':'#c81e1e'}}><span style={{width:6,height:6,borderRadius:'50%',background:'currentColor',display:'inline-block'}}/>{t.activo==='yes'?'Activo':'Inactivo'}</span></td>
-                <td>
-                  <div style={{display:'flex',gap:6}}>
-                    <button onClick={()=>openEdit(t)} style={{padding:'4px 10px',borderRadius:5,border:'1px solid #e2e8f0',background:'#fff',color:'#475569',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Editar</button>
-                    <button onClick={()=>handleToggle(t.id,t.nombre,t.activo)}
-                      style={{padding:'4px 10px',borderRadius:5,fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
-                        border: t.activo==='yes' ? '1px solid #fee2e2' : '1px solid #bbf7d0',
-                        background:'#fff',
-                        color: t.activo==='yes' ? '#c81e1e' : '#057a55'}}>
-                      {t.activo==='yes' ? 'Desactivar' : 'Activar'}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
