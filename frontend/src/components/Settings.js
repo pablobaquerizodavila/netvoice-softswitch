@@ -29,13 +29,27 @@ export default function Settings() {
   const [newPwd,  setNewPwd]  = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPwd, setShowPwd] = useState({c:false,n:false,cf:false});
-  const [sysInfo, setSysInfo] = useState(null);
+  const [sysInfo,   setSysInfo]   = useState(null);
+  const [smtpCfg,   setSmtpCfg]   = useState(null);
+  const [smtpForm,  setSmtpForm]  = useState({ host:"", port:"587", user:"", password:"", from_addr:"", from_name:"" });
+  const [smtpBusy,  setSmtpBusy]  = useState(false);
+  const [smtpTest,  setSmtpTest]  = useState(null);
 
   const showMsg = (text,type="success") => { setMsg({text,type}); setTimeout(()=>setMsg(null),5000); };
 
   useEffect(()=>{
     if (tab==="sistema") {
       api.get("/").then(r=>setSysInfo(r.data)).catch(()=>setSysInfo(null));
+    }
+    if (tab==="smtp" && !smtpCfg) {
+      api.get("/config/smtp").then(r=>{ setSmtpCfg(r.data); setSmtpForm({
+        host:     r.data.host||"smtp.gmail.com",
+        port:     r.data.port||"587",
+        user:     r.data.user||"",
+        password: "",
+        from_addr:r.data.from_addr||"noreply@linkotel.com",
+        from_name:r.data.from_name||"Netvoice / Linkotel",
+      }); }).catch(()=>{});
     }
   },[tab]);
 
@@ -56,6 +70,7 @@ export default function Settings() {
 
   const TABS = [
     { key:"password", label:"⚿ Contraseña" },
+    { key:"smtp",     label:"✉ SMTP / Email" },
     { key:"sistema",  label:"⚙ Sistema" },
     { key:"info",     label:"ℹ Información" },
   ];
@@ -155,6 +170,81 @@ export default function Settings() {
         </Section>
       )}
 
+      {tab==="smtp" && (
+        <Section title="✉ Configuración SMTP">
+          {smtpCfg && (
+            <div className={"nv-alert "+(smtpCfg.configured?"nv-alert-ok":"nv-alert-warn")} style={{ marginBottom:16 }}>
+              {smtpCfg.configured?"SMTP configurado y activo":"SMTP no configurado — OTP solo va al log del servidor"}
+            </div>
+          )}
+          <div style={{ maxWidth:480 }}>
+            <div className="nv-form-row">
+              <div className="nv-form-field">
+                <label className="nv-label">Servidor SMTP</label>
+                <input className="nv-input" value={smtpForm.host} onChange={e=>setSmtpForm(f=>({...f,host:e.target.value}))} placeholder="smtp.gmail.com"/>
+              </div>
+              <div className="nv-form-field">
+                <label className="nv-label">Puerto</label>
+                <input className="nv-input" value={smtpForm.port} onChange={e=>setSmtpForm(f=>({...f,port:e.target.value}))} placeholder="587"/>
+              </div>
+            </div>
+            <div className="nv-form-row">
+              <div className="nv-form-field">
+                <label className="nv-label">Usuario</label>
+                <input className="nv-input" value={smtpForm.user} onChange={e=>setSmtpForm(f=>({...f,user:e.target.value}))} placeholder="usuario@gmail.com"/>
+              </div>
+              <div className="nv-form-field">
+                <label className="nv-label">Password / App Password</label>
+                <input className="nv-input" type="password" value={smtpForm.password} onChange={e=>setSmtpForm(f=>({...f,password:e.target.value}))} placeholder="App password de Gmail"/>
+              </div>
+            </div>
+            <div className="nv-form-row">
+              <div className="nv-form-field">
+                <label className="nv-label">Email remitente</label>
+                <input className="nv-input" value={smtpForm.from_addr} onChange={e=>setSmtpForm(f=>({...f,from_addr:e.target.value}))} placeholder="noreply@linkotel.com"/>
+              </div>
+              <div className="nv-form-field">
+                <label className="nv-label">Nombre remitente</label>
+                <input className="nv-input" value={smtpForm.from_name} onChange={e=>setSmtpForm(f=>({...f,from_name:e.target.value}))} placeholder="Netvoice / Linkotel"/>
+              </div>
+            </div>
+            {smtpTest && (
+              <div className={"nv-alert "+(smtpTest.ok?"nv-alert-ok":"nv-alert-err")} style={{ marginBottom:14 }}>
+                {smtpTest.msg}
+              </div>
+            )}
+            <div style={{ display:"flex",gap:8,marginTop:4 }}>
+              <button className="nv-btn nv-btn-ghost" disabled={smtpBusy}
+                onClick={async()=>{
+                  setSmtpBusy(true); setSmtpTest(null);
+                  try {
+                    const r = await api.post("/config/smtp/test", smtpForm);
+                    setSmtpTest({ok:true,msg:r.data.message});
+                  } catch(e) { setSmtpTest({ok:false,msg:e?.response?.data?.detail||"Error de conexion"}); }
+                  finally { setSmtpBusy(false); }
+                }}>
+                {smtpBusy?<span className="nv-spinner"/>:"▶ Probar conexion"}
+              </button>
+              <button className="nv-btn nv-btn-primary" disabled={smtpBusy}
+                onClick={async()=>{
+                  setSmtpBusy(true);
+                  try {
+                    await api.put("/config/smtp", smtpForm);
+                    showMsg("Configuracion SMTP guardada");
+                    setSmtpCfg(c=>({...c,configured:!!(smtpForm.host&&smtpForm.user&&smtpForm.password)}));
+                  } catch(e) { showMsg(e?.response?.data?.detail||"Error al guardar","error"); }
+                  finally { setSmtpBusy(false); }
+                }}>
+                {smtpBusy?<span className="nv-spinner"/>:"✓ Guardar SMTP"}
+              </button>
+            </div>
+            <div style={{ marginTop:16,padding:"12px 14px",background:"var(--bg-raised)",borderRadius:"var(--r-sm)",fontSize:11,color:"var(--text-muted)",lineHeight:1.7 }}>
+              <strong style={{ color:"var(--text-secondary)" }}>Gmail:</strong> Activa la verificacion en 2 pasos y genera un App Password en myaccount.google.com/apppasswords<br/>
+              <strong style={{ color:"var(--text-secondary)" }}>Otros:</strong> Usa las credenciales SMTP de tu proveedor de email corporativo.
+            </div>
+          </div>
+        </Section>
+      )}
       {tab==="sistema" && (
         <div>
           <Section title="◉ Estado de servicios">

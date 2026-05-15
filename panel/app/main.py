@@ -1165,3 +1165,64 @@ def fraud_stats(db: Session = Depends(get_db)):
         "alerts_critical": crit,
         "suspicious": [dict(x._mapping) for x in suspicious],
     }
+
+# ─── SMTP CONFIG ──────────────────────────────────────────────
+@app.get("/config/smtp")
+def get_smtp_config():
+    import os
+    return {
+        "host":      os.getenv("SMTP_HOST",""),
+        "port":      os.getenv("SMTP_PORT","587"),
+        "user":      os.getenv("SMTP_USER",""),
+        "from_addr": os.getenv("SMTP_FROM",""),
+        "from_name": os.getenv("SMTP_FROM_NAME",""),
+        "configured": bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD")),
+    }
+
+@app.post("/config/smtp/test")
+def test_smtp(data: dict, current_user=Depends(get_current_user)):
+    import smtplib, os
+    host  = data.get("host") or os.getenv("SMTP_HOST","")
+    port  = int(data.get("port") or os.getenv("SMTP_PORT",587))
+    user  = data.get("user") or os.getenv("SMTP_USER","")
+    pw    = data.get("password") or os.getenv("SMTP_PASSWORD","")
+    if not host or not user or not pw:
+        raise HTTPException(status_code=400, detail="Faltan credenciales SMTP")
+    try:
+        with smtplib.SMTP(host, port, timeout=10) as s:
+            s.ehlo(); s.starttls(); s.login(user, pw)
+        return {"status":"ok","message":f"Conexion SMTP exitosa a {host}:{port}"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error SMTP: {str(e)}")
+
+@app.put("/config/smtp")
+def save_smtp_config(data: dict, current_user=Depends(get_current_user)):
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    try:
+        with open(env_path) as f:
+            lines = f.readlines()
+        keys_to_update = {
+            "SMTP_HOST":      data.get("host",""),
+            "SMTP_PORT":      str(data.get("port","587")),
+            "SMTP_USER":      data.get("user",""),
+            "SMTP_PASSWORD":  data.get("password",""),
+            "SMTP_FROM":      data.get("from_addr","noreply@linkotel.com"),
+            "SMTP_FROM_NAME": data.get("from_name","Netvoice"),
+        }
+        new_lines = []
+        updated = set()
+        for line in lines:
+            key = line.split("=")[0].strip()
+            if key in keys_to_update:
+                new_lines.append(f"{key}={keys_to_update[key]}\n")
+                updated.add(key)
+            else:
+                new_lines.append(line)
+        for key,val in keys_to_update.items():
+            if key not in updated:
+                new_lines.append(f"{key}={val}\n")
+        with open(env_path,"w") as f:
+            f.writelines(new_lines)
+        return {"status":"ok","message":"Configuracion SMTP guardada. Reinicia el servicio para aplicar."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
