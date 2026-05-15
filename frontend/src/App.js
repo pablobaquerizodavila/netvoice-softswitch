@@ -28,6 +28,7 @@ import AuditLog from './components/AuditLog';
 import Softphone from './components/Softphone';
 import Usuarios from './components/Usuarios';
 import Antifraude from './components/Antifraude';
+import APICenter from './components/APICenter';
 
 function Layout({ children }) {
   return (
@@ -78,6 +79,7 @@ export default function App() {
                   <Route path="/softphone"     element={<Softphone />} />
                   <Route path="/usuarios"      element={<Usuarios />} />
                   <Route path="/antifraude"    element={<Antifraude />} />
+                  <Route path="/api"          element={<APICenter />} />
                 </Routes>
               </Layout>
             </PrivateRoute>
