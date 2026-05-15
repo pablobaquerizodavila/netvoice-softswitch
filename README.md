@@ -68,11 +68,36 @@ Incluye: codigo fuente, build React, dump asterisk, dump netvoice, git push, com
 
 ---
 
+## Credenciales del sistema
+
+| Usuario | Email | Password | Rol |
+|---------|-------|----------|-----|
+| Admin | admin@netvoice.ec | Admin1234! | admin |
+| Agente SAC | sac@netvoice.ec | Sac2024# | agent |
+| Partner Demo | partner@demo.ec | — | partner |
+
+---
+
+## URLs del sistema
+
+| Portal | URL |
+|--------|-----|
+| Site principal | https://eneural.org |
+| Panel admin / SAC | https://panel.eneural.org/login |
+| Portal cliente | https://panel.eneural.org/registro |
+| Agente SAC | https://panel.eneural.org/sac/login |
+| API docs | https://panel.eneural.org/docs |
+| API v1 | https://panel.eneural.org/v1/ |
+| ARI Asterisk | http://192.168.0.161:8088/ari |
+
+---
+
 ## Pendientes
 
-- SMTP real para OTP y verificacion de email
-- Pasarela de pago real PayPhone o Stripe
-- Motor de facturacion recurrente CDR a factura mensual
-- Grafana + Prometheus esperando NAS DS1621+
-- App movil desktop Electron o React Native
-- Fase 4 Media Server separado FreeSWITCH o Janus
+- [ ] SMTP real para OTP y verificacion de email (actualmente en log)
+- [ ] Pasarela de pago real PayPhone o Stripe (sandbox listo)
+- [ ] Motor de facturacion recurrente CDR a factura mensual
+- [ ] Grafana + Prometheus esperando NAS DS1621+
+- [ ] Completar tabs Netvoice v1 en pantalla Usuarios del panel admin
+- [ ] App movil desktop Electron o React Native
+- [ ] Fase 4 Media Server separado FreeSWITCH o Janus
