@@ -1,198 +1,354 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 
-export default function Extensions() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editExt, setEditExt] = useState(null);
-  const [msg, setMsg] = useState(null);
-  const [form, setForm] = useState({ id: '', password: '', context: 'internal', allow: 'ulaw,alaw,gsm' });
-  const [showPwd, setShowPwd] = useState(false);
+async function safe(fn) { try { return await fn(); } catch { return null; } }
 
-  const [regSet, setRegSet] = useState(new Set());
+const CODECS = ['ulaw','alaw','gsm','g722','g729','opus','vp8','h264'];
+const CONTEXTS = ['internal','from-client','from-external'];
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([
-      api.get('/extensions'),
-      api.get('/extensions/status'),
-    ]).then(([extRes, statusRes]) => {
-      setData(extRes.data.data || []);
-      setRegSet(new Set(statusRes.data.registered || []));
-    }).finally(() => setLoading(false));
+function Alert({ msg, onClose }) {
+  if (!msg) return null;
+  const cls = msg.type === 'error' ? 'nv-alert-err' : msg.type === 'warn' ? 'nv-alert-warn' : 'nv-alert-ok';
+  return (
+    <div className={`nv-alert ${cls}`} style={{ marginBottom:14 }}>
+      <span style={{ flex:1 }}>{msg.text}</span>
+      <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'inherit', fontSize:14 }}>✕</button>
+    </div>
+  );
+}
+
+function ExtModal({ ext, onClose, onSave }) {
+  const isEdit = !!ext?.id;
+  const [form, setForm] = useState({
+    id:       ext?.id       || '',
+    password: '',
+    context:  ext?.context  || 'internal',
+    allow:    ext?.allow    || 'ulaw,alaw,gsm',
+  });
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const toggleCodec = (codec) => {
+    const current = form.allow.split(',').filter(Boolean);
+    const next = current.includes(codec)
+      ? current.filter(c => c !== codec)
+      : [...current, codec];
+    set('allow', next.join(',') || 'ulaw');
   };
-  useEffect(() => { load(); }, []);
 
-  const showMsg = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000); };
-  const openCreate = () => { setEditExt(null); setForm({ id: '', password: '', context: 'internal', allow: 'ulaw,alaw,gsm' }); setShowForm(true); };
-  const openEdit = (ext) => { setEditExt(ext); setForm({ id: ext.id, password: '', context: ext.context, allow: ext.allow }); setShowForm(true); };
-
-  const handleSubmit = async () => {
-    if (!editExt && (!form.id || !form.password)) return showMsg('ID y password requeridos', 'error');
+  const submit = async () => {
+    if (!isEdit && !form.id) return setErr('El ID de extensión es requerido');
+    if (!isEdit && !form.password) return setErr('La contraseña es requerida');
+    setBusy(true); setErr(null);
     try {
-      if (editExt) {
-        await api.put('/extensions/' + editExt.id, { password: form.password || undefined, context: form.context, allow: form.allow });
-        showMsg('Extensión ' + editExt.id + ' actualizada');
+      if (isEdit) {
+        const payload = { context: form.context, allow: form.allow };
+        if (form.password) payload.password = form.password;
+        await api.put(`/extensions/${ext.id}`, payload);
       } else {
         await api.post('/extensions', form);
-        showMsg('Extensión ' + form.id + ' creada');
       }
-      setShowForm(false); load();
-    } catch (e) { showMsg(e.response?.data?.detail || 'Error', 'error'); }
+      onSave();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Error al guardar');
+    } finally { setBusy(false); }
   };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar extensión ' + id + '?')) return;
-    try { await api.delete('/extensions/' + id); showMsg('Extensión ' + id + ' eliminada'); load(); }
-    catch (e) { showMsg(e.response?.data?.detail || 'Error', 'error'); }
-  };
-
-  const filtered = data.filter(e => !search || String(e.id).includes(search) || e.context?.includes(search));
-  const codecs = (allow) => (allow || '').split(',').map(c => c.trim()).filter(Boolean);
-
-  if (loading) return <div className="loading">Cargando extensiones...</div>;
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
-        <div>
-          <h1 className="page-title">Extensiones</h1>
-          <p className="page-subtitle">{data.length} extensiones registradas</p>
+    <div className="nv-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="nv-modal">
+        <div className="nv-modal-header">
+          <span className="nv-modal-title">{isEdit ? `Editar extensión ${ext.id}` : 'Nueva extensión SIP'}</span>
+          <button className="nv-modal-close" onClick={onClose}>✕</button>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={load} className="btn-sm">Actualizar</button>
-          <button onClick={openCreate} className="btn-primary">+ Nueva extensión</button>
-        </div>
-      </div>
 
-      {/* Mensaje */}
-      {msg && (
-        <div style={{ padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 500, background: msg.type === 'error' ? 'var(--red-dim)' : 'var(--green-dim)', color: msg.type === 'error' ? 'var(--red)' : 'var(--green)', border: '1px solid ' + (msg.type === 'error' ? 'var(--red)' : 'var(--green)') }}>
-          {msg.text}
-        </div>
-      )}
+        {err && <div className="nv-alert nv-alert-err" style={{ marginBottom:14 }}>{err}</div>}
 
-      {/* Modal */}
-      {showForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-mid)', borderRadius: 12, padding: 28, width: 420 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 20 }}>
-              {editExt ? 'Editar extensión ' + editExt.id : 'Nueva extensión'}
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {!editExt && (
-                <div>
-                  <label style={lbl}>Número de extensión *</label>
-                  <input style={inp} placeholder="ej. 1004" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} />
-                </div>
-              )}
-              <div>
-                <label style={lbl}>{editExt ? 'Nueva password (vacío = no cambiar)' : 'Password SIP *'}</label>
-                <div style={{ position: 'relative' }}>
-                  <input style={{ ...inp, paddingRight: 42 }} type={showPwd ? 'text' : 'password'} placeholder="MiPass123!" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-                  <button type="button" onClick={() => setShowPwd(!showPwd)}
-                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
-                    {showPwd ? (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
-                    ) : (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label style={lbl}>Contexto</label>
-                <select style={inp} value={form.context} onChange={e => setForm({ ...form, context: e.target.value })}>
-                  <option value="internal">internal</option>
-                  <option value="from-internal">from-internal</option>
-                  <option value="default">default</option>
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Codecs</label>
-                <select style={inp} value={form.allow} onChange={e => setForm({ ...form, allow: e.target.value })}>
-                  <option value="ulaw,alaw,gsm">ulaw, alaw, gsm</option>
-                  <option value="ulaw,alaw">ulaw, alaw</option>
-                  <option value="ulaw">Solo ulaw</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowForm(false)} className="btn-sm">Cancelar</button>
-              <button onClick={handleSubmit} className="btn-primary">
-                {editExt ? 'Guardar cambios' : 'Crear extensión'}
-              </button>
-            </div>
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">ID / Extensión</label>
+            <input className="nv-input" value={form.id} onChange={e => set('id', e.target.value)}
+              disabled={isEdit} placeholder="ej: 1001" />
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">{isEdit ? 'Nueva contraseña (opcional)' : 'Contraseña SIP'}</label>
+            <input className="nv-input" type="password" value={form.password}
+              onChange={e => set('password', e.target.value)}
+              placeholder={isEdit ? 'Dejar vacío para no cambiar' : 'Contraseña segura'} />
           </div>
         </div>
-      )}
 
-      {/* Métricas mini */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-        {[
-          { label: 'Total', val: data.length, cls: 'm-blue', vcls: 'v-blue' },
-          { label: 'Online', val: data.filter(e => regSet.has(String(e.id))).length, cls: 'm-green', vcls: 'v-green' },
-          { label: 'Offline', val: data.filter(e => !regSet.has(String(e.id))).length, cls: 'm-red', vcls: 'v-red' },
-        ].map(({ label, val, cls, vcls }) => (
-          <div key={label} className={`metric-card ${cls}`} style={{ minWidth: 110 }}>
-            <div className="metric-label">{label}</div>
-            <div className={`metric-value ${vcls}`}>{val}</div>
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Contexto Asterisk</label>
+            <select className="nv-select" value={form.context} onChange={e => set('context', e.target.value)}>
+              {CONTEXTS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Search */}
-      <div className="search-wrap">
-        <input className="search-input" placeholder="Buscar por ID o contexto..." value={search} onChange={e => setSearch(e.target.value)} />
-        <span className="result-count">{filtered.length} de {data.length}</span>
-      </div>
-
-      {/* Cards */}
-      <div className="ext-cards-grid">
-        {filtered.map((ext, i) => (
-          <div key={i} className="ext-card">
-            <div className="ext-card-header">
-              <div className="ext-avatar-lg">{String(ext.id)}</div>
-              <div>
-                <div className="ext-card-name">Extensión {ext.id}</div>
-                <span className={`status-pill ${regSet.has(String(ext.id)) ? 'pill-green' : 'pill-red'}`}>
-                  <span className="dot-sm" />
-                  {regSet.has(String(ext.id)) ? 'Registrada' : 'No registrada'}
-                </span>
-              </div>
-            </div>
-            <div className="ext-card-body">
-              {[{ label: 'ID', value: ext.id }, { label: 'AORs', value: ext.aors }, { label: 'Auth', value: ext.auth }, { label: 'Contexto', value: ext.context }].map(({ label, value }) => (
-                <div key={label} className="ext-field">
-                  <span className="ext-field-label">{label}</span>
-                  <span className="ext-field-value">{value || '—'}</span>
-                </div>
-              ))}
-              <div className="ext-field" style={{ borderBottom: 'none', paddingTop: 8 }}>
-                <span className="ext-field-label">Codecs</span>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {codecs(ext.allow).map(c => (
-                    <span key={c} className="badge badge-blue" style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{c}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="ext-card-actions">
-              <button onClick={() => openEdit(ext)} className="btn-sm" style={{ flex: 1, justifyContent: 'center' }}>Editar</button>
-              <button onClick={() => handleDelete(ext.id)} className="btn-sm btn-danger" style={{ flex: 1, justifyContent: 'center' }}>Eliminar</button>
-            </div>
+        <div className="nv-form-field" style={{ marginBottom:16 }}>
+          <label className="nv-label">Codecs permitidos</label>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:6 }}>
+            {CODECS.map(codec => {
+              const active = form.allow.split(',').includes(codec);
+              return (
+                <button key={codec} type="button"
+                  onClick={() => toggleCodec(codec)}
+                  style={{
+                    padding:'3px 10px', borderRadius:'var(--r-sm)', fontSize:11, fontWeight:600,
+                    cursor:'pointer', fontFamily:'var(--font-mono)',
+                    background: active ? 'var(--brand-subtle)' : 'var(--bg-raised)',
+                    color: active ? 'var(--brand)' : 'var(--text-muted)',
+                    border: `1px solid ${active ? 'var(--brand)' : 'var(--border)'}`,
+                    transition:'all var(--t)',
+                  }}
+                >{codec}</button>
+              );
+            })}
           </div>
-        ))}
-        {filtered.length === 0 && (
-          <div style={{ gridColumn: '1/-1', textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>Sin extensiones</div>
-        )}
+          <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:4, fontFamily:'var(--font-mono)' }}>
+            {form.allow || 'ninguno'}
+          </div>
+        </div>
+
+        <div className="nv-modal-footer">
+          <button className="nv-btn nv-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="nv-btn nv-btn-primary" onClick={submit} disabled={busy}>
+            {busy ? <span className="nv-spinner" /> : (isEdit ? '✓ Guardar cambios' : '+ Crear extensión')}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-const lbl = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' };
-const inp = { width: '100%', padding: '8px 12px', border: '1px solid var(--border-mid)', borderRadius: 7, fontSize: 13, fontFamily: 'var(--font)', color: 'var(--text)', background: 'var(--bg-surface)', outline: 'none', boxSizing: 'border-box' };
+function ExtCard({ ext, registered, onEdit, onDelete }) {
+  return (
+    <div style={{
+      background:'var(--bg-surface)', border:'1px solid var(--border)',
+      borderRadius:'var(--r-md)', padding:'14px 16px',
+      transition:'border-color var(--t), background var(--t)',
+      borderLeft: `3px solid ${registered ? 'var(--success)' : 'var(--border)'}`,
+    }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-active)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = registered ? 'var(--success)' : 'var(--border)'}
+    >
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{
+            width:38, height:38, borderRadius:'var(--r-sm)',
+            background: registered ? 'var(--success-bg)' : 'var(--bg-raised)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontFamily:'var(--font-mono)', fontSize:13, fontWeight:700,
+            color: registered ? 'var(--success)' : 'var(--text-muted)',
+            flexShrink:0,
+          }}>
+            {String(ext.id).slice(-4)}
+          </div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>
+              Extensión {ext.id}
+            </div>
+            <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:1 }}>
+              {ext.context}
+            </div>
+          </div>
+        </div>
+        <span className={`nv-badge ${registered ? 'nv-badge-ok' : 'nv-badge-muted'}`}>
+          <span className="dot" />
+          {registered ? 'Registrada' : 'Sin registro'}
+        </span>
+      </div>
+
+      {/* Codecs */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:12 }}>
+        {(ext.allow || '').split(',').filter(Boolean).map(c => (
+          <span key={c} style={{
+            fontSize:9, fontWeight:700, padding:'1px 6px',
+            background:'var(--bg-raised)', color:'var(--text-muted)',
+            borderRadius:3, fontFamily:'var(--font-mono)',
+            border:'1px solid var(--border)',
+          }}>{c}</span>
+        ))}
+      </div>
+
+      {/* Acciones */}
+      <div style={{ display:'flex', gap:6 }}>
+        <button className="nv-btn nv-btn-ghost nv-btn-sm" style={{ flex:1 }}
+          onClick={() => onEdit(ext)}>
+          ✎ Editar
+        </button>
+        <button className="nv-btn nv-btn-danger nv-btn-sm"
+          onClick={() => onDelete(ext)}>
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function Extensions() {
+  const [data,    setData]    = useState([]);
+  const [regSet,  setRegSet]  = useState(new Set());
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState('');
+  const [filter,  setFilter]  = useState('all');
+  const [modal,   setModal]   = useState(null); // null | 'create' | ext object
+  const [msg,     setMsg]     = useState(null);
+  const [delConf, setDelConf] = useState(null);
+
+  const showMsg = (text, type='success') => {
+    setMsg({ text, type });
+    setTimeout(() => setMsg(null), 4000);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [extRes, statusRes] = await Promise.all([
+      safe(() => api.get('/extensions')),
+      safe(() => api.get('/extensions/status')),
+    ]);
+    setData(extRes?.data?.data || []);
+    setRegSet(new Set(statusRes?.data?.registered || []));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); const iv = setInterval(load, 20000); return () => clearInterval(iv); }, [load]);
+
+  const handleDelete = async (ext) => {
+    try {
+      await api.delete(`/extensions/${ext.id}`);
+      showMsg(`Extensión ${ext.id} eliminada`);
+      load();
+    } catch (e) {
+      showMsg(e?.response?.data?.detail || 'Error al eliminar', 'error');
+    }
+    setDelConf(null);
+  };
+
+  const filtered = data.filter(e => {
+    const q = search.toLowerCase();
+    const matchQ = !q || String(e.id).includes(q) || e.context?.includes(q) || e.allow?.includes(q);
+    const matchF = filter === 'all'
+      || (filter === 'registered' && regSet.has(String(e.id)))
+      || (filter === 'unregistered' && !regSet.has(String(e.id)));
+    return matchQ && matchF;
+  });
+
+  const registered = data.filter(e => regSet.has(String(e.id))).length;
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="nv-page-header">
+        <div>
+          <div className="nv-page-title">Extensiones SIP</div>
+          <div className="nv-page-sub">
+            {data.length} extensiones · {registered} registradas · auto-refresh 20s
+          </div>
+        </div>
+        <div className="nv-page-actions">
+          <button className="nv-btn nv-btn-secondary nv-btn-sm" onClick={load} disabled={loading}>
+            {loading ? <span className="nv-spinner" /> : '↺'} Actualizar
+          </button>
+          <button className="nv-btn nv-btn-primary" onClick={() => setModal('create')}>
+            + Nueva extensión
+          </button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="nv-kpi-grid" style={{ gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', marginBottom:16 }}>
+        {[
+          { label:'Total',         value:data.length,               iconBg:'var(--brand-subtle)',  color:'var(--brand)'   },
+          { label:'Registradas',   value:registered,                iconBg:'var(--success-bg)',    color:'var(--success)' },
+          { label:'Sin registro',  value:data.length - registered,  iconBg:'var(--bg-raised)',     color:'var(--text-muted)' },
+          { label:'Contexto int.', value:data.filter(e=>e.context==='internal').length, iconBg:'var(--info-bg)', color:'var(--info)' },
+        ].map(({ label, value, iconBg, color }) => (
+          <div key={label} className="nv-kpi">
+            <div className="nv-kpi-label">{label}</div>
+            <div className="nv-kpi-value" style={{ fontSize:22, color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <Alert msg={msg} onClose={() => setMsg(null)} />
+
+      {/* Filtros + búsqueda */}
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        <div className="nv-search" style={{ flex:'1', minWidth:200 }}>
+          <span style={{ color:'var(--text-muted)', fontSize:12 }}>⌕</span>
+          <input placeholder="Buscar por ID, contexto o codec..."
+            value={search} onChange={e => setSearch(e.target.value)} />
+          {search && <button onClick={() => setSearch('')}
+            style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer' }}>✕</button>}
+        </div>
+        <div style={{ display:'flex', gap:4 }}>
+          {[['all','Todas'],['registered','Registradas'],['unregistered','Sin registro']].map(([k,l]) => (
+            <button key={k} className={`nv-btn nv-btn-sm ${filter===k?'nv-btn-secondary':'nv-btn-ghost'}`}
+              onClick={() => setFilter(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid de extensiones */}
+      {loading && !data.length ? (
+        <div className="nv-loading"><span className="nv-spinner" /><span>Cargando extensiones...</span></div>
+      ) : filtered.length === 0 ? (
+        <div className="nv-card" style={{ textAlign:'center', padding:'48px 20px' }}>
+          <div style={{ fontSize:32, opacity:.2, marginBottom:12 }}>◎</div>
+          <div style={{ fontSize:13, color:'var(--text-muted)' }}>
+            {search ? 'Sin resultados para la búsqueda' : 'Sin extensiones registradas'}
+          </div>
+          {!search && (
+            <button className="nv-btn nv-btn-primary" style={{ marginTop:16 }}
+              onClick={() => setModal('create')}>+ Crear primera extensión</button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
+          {filtered.map(ext => (
+            <ExtCard key={ext.id} ext={ext}
+              registered={regSet.has(String(ext.id))}
+              onEdit={e => setModal(e)}
+              onDelete={e => setDelConf(e)} />
+          ))}
+        </div>
+      )}
+
+      {/* Modal crear/editar */}
+      {modal && (
+        <ExtModal
+          ext={modal === 'create' ? null : modal}
+          onClose={() => setModal(null)}
+          onSave={() => { setModal(null); load(); showMsg(modal === 'create' ? 'Extensión creada' : 'Extensión actualizada'); }}
+        />
+      )}
+
+      {/* Confirm delete */}
+      {delConf && (
+        <div className="nv-modal-overlay" onClick={() => setDelConf(null)}>
+          <div className="nv-modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
+            <div className="nv-modal-header">
+              <span className="nv-modal-title">Eliminar extensión</span>
+              <button className="nv-modal-close" onClick={() => setDelConf(null)}>✕</button>
+            </div>
+            <p style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>
+              ¿Eliminar la extensión <span style={{ fontFamily:'var(--font-mono)', color:'var(--danger)' }}>{delConf.id}</span>?
+              Esta acción eliminará el endpoint, auth y AOR de Asterisk.
+            </p>
+            <div className="nv-modal-footer">
+              <button className="nv-btn nv-btn-ghost" onClick={() => setDelConf(null)}>Cancelar</button>
+              <button className="nv-btn nv-btn-danger" onClick={() => handleDelete(delConf)}>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
