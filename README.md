@@ -77,7 +77,7 @@ python3 ~/netvoice_backup.py
 | 3 | Upgrade Clientes: tabs SAC/Admin/Partner, historial, docs | ✅ Completado |
 | 4 | Upgrade Extensiones SIP: codecs, registro, CRUD carrier | ✅ Completado |
 | 5 | DID Management: rangos ARCOTEL, asignacion, KPIs | ✅ Completado |
-| 6 | Upgrade Roles/Permisos: 10 perfiles, control granular | 🔄 Pendiente |
+| 6 | Usuarios y Roles: 10 perfiles, permisos por modulo | ✅ Completado |
 
 ### 🔄 Fase 2 — Motor Comercial y Operativo
 

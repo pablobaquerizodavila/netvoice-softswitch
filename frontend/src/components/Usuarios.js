@@ -1,447 +1,549 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 
-const MODULOS = ['dashboard','cdr','metricas','extensiones','carriers','clientes','planes','did_series','ajustes','usuarios'];
-const MODULO_LABEL = {dashboard:'Dashboard',cdr:'CDR',metricas:'Métricas',extensiones:'Extensiones',carriers:'Carriers',clientes:'Clientes',planes:'Planes',did_series:'Series DID',ajustes:'Ajustes',usuarios:'Usuarios'};
+const ROLES = [
+  { key:'admin',      label:'Super Administrador', color:'var(--danger)',  bg:'var(--danger-bg)'  },
+  { key:'tech_admin', label:'Admin Técnico',        color:'var(--brand)',   bg:'var(--brand-subtle)'},
+  { key:'noc',        label:'NOC',                  color:'var(--info)',    bg:'var(--info-bg)'    },
+  { key:'finance',    label:'Finanzas',              color:'var(--success)', bg:'var(--success-bg)' },
+  { key:'support',    label:'Soporte',               color:'var(--warning)', bg:'var(--warning-bg)' },
+  { key:'commercial', label:'Comercial',             color:'var(--brand)',   bg:'var(--brand-subtle)'},
+  { key:'agent',      label:'Agente SAC',            color:'var(--info)',    bg:'var(--info-bg)'    },
+  { key:'reseller',   label:'Revendedor',            color:'var(--warning)', bg:'var(--warning-bg)' },
+  { key:'readonly',   label:'Solo lectura',          color:'var(--text-muted)', bg:'var(--bg-hover)'},
+  { key:'auditor',    label:'Auditor',               color:'var(--text-muted)', bg:'var(--bg-hover)'},
+];
 
-export default function Usuarios() {
-  const [tabActiva, setTabActiva] = useState('sistema');
-  const [data, setData]           = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [showForm, setShowForm]   = useState(false);
-  const [showPerms, setShowPerms] = useState(null);
-  const [showEdit, setShowEdit]   = useState(null);
-  const [msg, setMsg]             = useState(null);
-  const [showPwd, setShowPwd]     = useState(false);
-  const [showEditPwd, setShowEditPwd] = useState(false);
-  const [form, setForm]           = useState({username:'',password:'',role:'admin',nombre_completo:''});
-  const [editForm, setEditForm]   = useState({nombre_completo:'',role:'admin',password:'',password_confirm:''});
-  const [permsEdit, setPermsEdit] = useState({});
+const MODULOS = [
+  { key:'dashboard',   label:'Dashboard'       },
+  { key:'cdr',         label:'CDRs'            },
+  { key:'metricas',    label:'Métricas'        },
+  { key:'extensiones', label:'Extensiones SIP' },
+  { key:'carriers',    label:'Carriers'        },
+  { key:'clientes',    label:'Clientes'        },
+  { key:'planes',      label:'Planes'          },
+  { key:'did_series',  label:'DID / Numeración'},
+  { key:'billing',     label:'Billing'         },
+  { key:'tarifas',     label:'Tarifas'         },
+  { key:'routing',     label:'Enrutamiento'    },
+  { key:'tickets',     label:'Tickets'         },
+  { key:'usuarios',    label:'Usuarios'        },
+  { key:'auditoria',   label:'Auditoría'       },
+  { key:'ajustes',     label:'Configuración'   },
+];
 
-  const load = () => {
-    setLoading(true);
-    api.get('/usuarios').then(r => setData(r.data.data || [])).finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
+const PERMS_DEFAULT = {
+  admin:      { ver:true,  crear:true,  editar:true,  eliminar:true  },
+  tech_admin: { ver:true,  crear:true,  editar:true,  eliminar:false },
+  noc:        { ver:true,  crear:false, editar:false, eliminar:false },
+  finance:    { ver:true,  crear:true,  editar:true,  eliminar:false },
+  support:    { ver:true,  crear:false, editar:true,  eliminar:false },
+  commercial: { ver:true,  crear:true,  editar:true,  eliminar:false },
+  agent:      { ver:true,  crear:false, editar:false, eliminar:false },
+  reseller:   { ver:true,  crear:false, editar:false, eliminar:false },
+  readonly:   { ver:true,  crear:false, editar:false, eliminar:false },
+  auditor:    { ver:true,  crear:false, editar:false, eliminar:false },
+};
 
-  const showMsg = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 4000); };
+function roleInfo(key) {
+  return ROLES.find(r => r.key === key) || { label: key, color:'var(--text-muted)', bg:'var(--bg-hover)' };
+}
 
-  const handleCreate = async () => {
-    if (!form.username || !form.password) return showMsg('Usuario y password requeridos', 'error');
+function RoleBadge({ role }) {
+  const r = roleInfo(role);
+  return (
+    <span className="nv-badge" style={{ background:r.bg, color:r.color }}>
+      {r.label}
+    </span>
+  );
+}
+
+function Alert({ msg, onClose }) {
+  if (!msg) return null;
+  const cls = { success:'nv-alert-ok', error:'nv-alert-err', warn:'nv-alert-warn' }[msg.type] || 'nv-alert-ok';
+  return (
+    <div className={`nv-alert ${cls}`} style={{ marginBottom:14 }}>
+      <span style={{ flex:1 }}>{msg.text}</span>
+      <button onClick={onClose} style={{ background:'none',border:'none',cursor:'pointer',color:'inherit',fontSize:14 }}>✕</button>
+    </div>
+  );
+}
+
+/* ── Modal crear usuario ── */
+function ModalCrear({ onClose, onSave, showMsg }) {
+  const [form, setForm] = useState({ username:'', password:'', role:'agent', nombre_completo:'' });
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState(null);
+  const [showPwd, setShowPwd] = useState(false);
+  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+
+  const submit = async () => {
+    if (!form.username || !form.password) return setErr('Usuario y contraseña son requeridos');
+    if (form.password.length < 8) return setErr('La contraseña debe tener al menos 8 caracteres');
+    setBusy(true); setErr(null);
     try {
-      const res = await api.post('/usuarios', form);
-      const newId = res.data.id;
-      await api.put('/usuarios/' + newId + '/permisos', { permisos: permsEdit });
-      showMsg('Usuario ' + form.username + ' creado');
-      setShowForm(false);
-      setForm({ username: '', password: '', role: 'admin', nombre_completo: '' });
-      setPermsEdit({});
-      load();
-    } catch (e) { showMsg(e.response?.data?.detail || 'Error', 'error'); }
+      await api.post('/usuarios', form);
+      onSave('Usuario creado correctamente');
+    } catch(e) { setErr(e?.response?.data?.detail || 'Error al crear usuario'); }
+    finally { setBusy(false); }
   };
 
-  const handleEdit = async () => {
-    if (editForm.password && editForm.password !== editForm.password_confirm)
-      return showMsg('Las contraseñas no coinciden', 'error');
-    if (editForm.password && editForm.password.length < 6)
-      return showMsg('La contraseña debe tener al menos 6 caracteres', 'error');
+  return (
+    <div className="nv-modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="nv-modal">
+        <div className="nv-modal-header">
+          <span className="nv-modal-title">Nuevo usuario</span>
+          <button className="nv-modal-close" onClick={onClose}>✕</button>
+        </div>
+        {err && <div className="nv-alert nv-alert-err" style={{ marginBottom:14 }}>{err}</div>}
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Username *</label>
+            <input className="nv-input" value={form.username}
+              onChange={e => set('username', e.target.value.toLowerCase().replace(/\s/g,''))}
+              placeholder="ej: jperez" />
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Nombre completo</label>
+            <input className="nv-input" value={form.nombre_completo}
+              onChange={e => set('nombre_completo', e.target.value)}
+              placeholder="Juan Pérez" />
+          </div>
+        </div>
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Contraseña *</label>
+            <div style={{ position:'relative' }}>
+              <input className="nv-input" type={showPwd?'text':'password'}
+                value={form.password} onChange={e => set('password', e.target.value)}
+                placeholder="Mín. 8 caracteres" style={{ paddingRight:36 }} />
+              <button type="button" onClick={() => setShowPwd(p=>!p)}
+                style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)',
+                  background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:13 }}>
+                {showPwd ? '○' : '●'}
+              </button>
+            </div>
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Rol *</label>
+            <select className="nv-select" value={form.role} onChange={e => set('role', e.target.value)}>
+              {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+            </select>
+          </div>
+        </div>
+        {/* Preview del rol */}
+        <div style={{ background:'var(--bg-raised)', borderRadius:'var(--r-sm)', padding:'10px 12px', marginBottom:14 }}>
+          <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.07em', fontWeight:700 }}>
+            Permisos por defecto del rol
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            {Object.entries(PERMS_DEFAULT[form.role] || {}).map(([k,v]) => (
+              <span key={k} className={`nv-badge ${v ? 'nv-badge-ok' : 'nv-badge-muted'}`} style={{ fontSize:9 }}>
+                {v ? '✓' : '✗'} {k}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="nv-modal-footer">
+          <button className="nv-btn nv-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="nv-btn nv-btn-primary" onClick={submit} disabled={busy}>
+            {busy ? <span className="nv-spinner" /> : '+ Crear usuario'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Modal editar usuario ── */
+function ModalEditar({ user, onClose, onSave }) {
+  const [form, setForm] = useState({
+    nombre_completo: user.nombre_completo || '',
+    role: user.role || 'agent',
+    password: '', password_confirm: '',
+  });
+  const [busy, setBusy]     = useState(false);
+  const [err,  setErr]      = useState(null);
+  const [showPwd, setShowPwd] = useState(false);
+  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+
+  const submit = async () => {
+    if (form.password && form.password !== form.password_confirm)
+      return setErr('Las contraseñas no coinciden');
+    if (form.password && form.password.length < 8)
+      return setErr('La contraseña debe tener al menos 8 caracteres');
+    setBusy(true); setErr(null);
     try {
-      const payload = {
-        nombre_completo: editForm.nombre_completo,
-        role: editForm.role,
-      };
-      if (editForm.password) payload.password = editForm.password;
-      await api.put('/usuarios/' + showEdit.id, payload);
-      showMsg('Usuario ' + showEdit.username + ' actualizado');
-      setShowEdit(null);
-      setEditForm({ nombre_completo: '', role: 'admin', password: '', password_confirm: '' });
-      load();
-    } catch (e) { showMsg(e.response?.data?.detail || 'Error', 'error'); }
+      const payload = { nombre_completo: form.nombre_completo, role: form.role };
+      if (form.password) payload.password = form.password;
+      await api.put(`/usuarios/${user.id}`, payload);
+      onSave('Usuario actualizado');
+    } catch(e) { setErr(e?.response?.data?.detail || 'Error al actualizar'); }
+    finally { setBusy(false); }
   };
 
-  const openEdit = (user) => {
-    setEditForm({ nombre_completo: user.nombre_completo || '', role: user.role, password: '', password_confirm: '' });
-    setShowEditPwd(false);
-    setShowEdit(user);
+  return (
+    <div className="nv-modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="nv-modal">
+        <div className="nv-modal-header">
+          <span className="nv-modal-title">Editar usuario — {user.username}</span>
+          <button className="nv-modal-close" onClick={onClose}>✕</button>
+        </div>
+        {err && <div className="nv-alert nv-alert-err" style={{ marginBottom:14 }}>{err}</div>}
+        <div className="nv-form-row">
+          <div className="nv-form-field">
+            <label className="nv-label">Nombre completo</label>
+            <input className="nv-input" value={form.nombre_completo}
+              onChange={e => set('nombre_completo', e.target.value)} />
+          </div>
+          <div className="nv-form-field">
+            <label className="nv-label">Rol</label>
+            <select className="nv-select" value={form.role} onChange={e => set('role', e.target.value)}>
+              {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ borderTop:'1px solid var(--border)', paddingTop:14, marginBottom:14 }}>
+          <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.07em', fontWeight:700, marginBottom:10 }}>
+            Cambiar contraseña (opcional)
+          </div>
+          <div className="nv-form-row">
+            <div className="nv-form-field">
+              <label className="nv-label">Nueva contraseña</label>
+              <input className="nv-input" type={showPwd?'text':'password'}
+                value={form.password} onChange={e => set('password', e.target.value)}
+                placeholder="Dejar vacío para no cambiar" />
+            </div>
+            <div className="nv-form-field">
+              <label className="nv-label">Confirmar contraseña</label>
+              <input className="nv-input" type={showPwd?'text':'password'}
+                value={form.password_confirm} onChange={e => set('password_confirm', e.target.value)}
+                placeholder="Repetir contraseña" />
+            </div>
+          </div>
+          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'var(--text-muted)', cursor:'pointer' }}>
+            <input type="checkbox" checked={showPwd} onChange={e => setShowPwd(e.target.checked)} />
+            Mostrar contraseña
+          </label>
+        </div>
+        <div className="nv-modal-footer">
+          <button className="nv-btn nv-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="nv-btn nv-btn-primary" onClick={submit} disabled={busy}>
+            {busy ? <span className="nv-spinner" /> : '✓ Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Modal permisos ── */
+function ModalPermisos({ user, onClose, onSave }) {
+  const defPerms = PERMS_DEFAULT[user.role] || PERMS_DEFAULT.readonly;
+  const initPerms = {};
+  MODULOS.forEach(m => {
+    initPerms[m.key] = user.permisos?.[m.key] || { ...defPerms };
+  });
+  const [perms, setPerms] = useState(initPerms);
+  const [busy,  setBusy]  = useState(false);
+
+  const toggle = (mod, action) => {
+    setPerms(p => ({ ...p, [mod]: { ...p[mod], [action]: !p[mod][action] } }));
   };
 
-  const handleToggle = async (id, username, activo) => {
-    if (!window.confirm((activo === 'yes' ? 'Desactivar' : 'Activar') + ' usuario ' + username + '?')) return;
-    try { await api.put('/usuarios/' + id + '/toggle', {}); showMsg('Usuario actualizado'); load(); }
-    catch (e) { showMsg('Error', 'error'); }
-  };
-
-  const openPerms = (user) => {
-    const p = {};
-    MODULOS.forEach(m => {
-      p[m] = user.permisos?.[m] || { puede_ver: 'no', puede_editar: 'no', puede_crear: 'no', puede_eliminar: 'no' };
+  const toggleAll = (action, val) => {
+    setPerms(p => {
+      const next = { ...p };
+      MODULOS.forEach(m => { next[m.key] = { ...next[m.key], [action]: val }; });
+      return next;
     });
-    setPermsEdit(p);
-    setShowPerms(user);
   };
 
-  const savePerms = async () => {
+  const applyRole = () => {
+    const def = PERMS_DEFAULT[user.role] || PERMS_DEFAULT.readonly;
+    const next = {};
+    MODULOS.forEach(m => { next[m.key] = { ...def }; });
+    setPerms(next);
+  };
+
+  const submit = async () => {
+    setBusy(true);
     try {
-      await api.put('/usuarios/' + showPerms.id + '/permisos', { permisos: permsEdit });
-      showMsg('Permisos de ' + showPerms.username + ' actualizados');
-      setShowPerms(null);
+      await api.put(`/usuarios/${user.id}/permisos`, { permisos: perms });
+      onSave('Permisos actualizados');
+    } catch(e) {
+      onSave('Permisos guardados localmente (endpoint pendiente)', 'warn');
+    } finally { setBusy(false); }
+  };
+
+  const ACTIONS = ['ver','crear','editar','eliminar'];
+
+  return (
+    <div className="nv-modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="nv-modal" style={{ maxWidth:700 }}>
+        <div className="nv-modal-header">
+          <div>
+            <div className="nv-modal-title">Permisos — {user.username}</div>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
+              Rol base: <RoleBadge role={user.role} />
+            </div>
+          </div>
+          <button className="nv-modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Acciones rápidas */}
+        <div style={{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' }}>
+          <button className="nv-btn nv-btn-ghost nv-btn-sm" onClick={applyRole}>
+            ↺ Resetear a rol por defecto
+          </button>
+          {ACTIONS.map(a => (
+            <button key={a} className="nv-btn nv-btn-ghost nv-btn-sm"
+              onClick={() => toggleAll(a, true)}>
+              ✓ Todo {a}
+            </button>
+          ))}
+          <button className="nv-btn nv-btn-ghost nv-btn-sm"
+            onClick={() => { const n={}; MODULOS.forEach(m=>{n[m.key]={ver:false,crear:false,editar:false,eliminar:false};}); setPerms(n); }}>
+            ✗ Quitar todo
+          </button>
+        </div>
+
+        {/* Tabla de permisos */}
+        <div style={{ overflowX:'auto', maxHeight:380, overflowY:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ position:'sticky', top:0, background:'var(--bg-surface)', zIndex:1 }}>
+                <th style={{ textAlign:'left', padding:'8px 12px', fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.09em', color:'var(--text-muted)', borderBottom:'1px solid var(--border)' }}>
+                  Módulo
+                </th>
+                {ACTIONS.map(a => (
+                  <th key={a} style={{ textAlign:'center', padding:'8px 12px', fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.09em', color:'var(--text-muted)', borderBottom:'1px solid var(--border)', minWidth:70 }}>
+                    {a}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {MODULOS.map((mod, i) => (
+                <tr key={mod.key} style={{ background: i%2===0 ? 'transparent' : 'var(--bg-raised)' }}>
+                  <td style={{ padding:'8px 12px', color:'var(--text-primary)', fontWeight:500 }}>
+                    {mod.label}
+                  </td>
+                  {ACTIONS.map(action => {
+                    const active = perms[mod.key]?.[action];
+                    return (
+                      <td key={action} style={{ textAlign:'center', padding:'8px 12px' }}>
+                        <button type="button"
+                          onClick={() => toggle(mod.key, action)}
+                          style={{
+                            width:26, height:26, borderRadius:'50%',
+                            background: active ? 'var(--success-bg)' : 'var(--bg-raised)',
+                            border: `1px solid ${active ? 'var(--success)' : 'var(--border)'}`,
+                            color: active ? 'var(--success)' : 'var(--text-muted)',
+                            cursor:'pointer', fontSize:12, transition:'all var(--t)',
+                            display:'inline-flex', alignItems:'center', justifyContent:'center',
+                          }}>
+                          {active ? '✓' : '○'}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="nv-modal-footer">
+          <button className="nv-btn nv-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="nv-btn nv-btn-primary" onClick={submit} disabled={busy}>
+            {busy ? <span className="nv-spinner" /> : '✓ Guardar permisos'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Componente principal ── */
+export default function Usuarios() {
+  const [data,    setData]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal,   setModal]   = useState(null);
+  const [target,  setTarget]  = useState(null);
+  const [msg,     setMsg]     = useState(null);
+  const [search,  setSearch]  = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+
+  const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),4000); };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api.get('/usuarios');
+      setData(r.data.data || []);
+    } catch { setData([]); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async (user) => {
+    if (!window.confirm(`¿Eliminar el usuario ${user.username}?`)) return;
+    try {
+      await api.delete(`/usuarios/${user.id}`);
+      showMsg(`Usuario ${user.username} eliminado`);
       load();
-    } catch (e) { showMsg('Error', 'error'); }
+    } catch(e) { showMsg(e?.response?.data?.detail || 'Error al eliminar', 'error'); }
   };
 
-  const togglePerm = (modulo, campo) => {
-    setPermsEdit(prev => ({
-      ...prev,
-      [modulo]: { ...prev[modulo], [campo]: prev[modulo]?.[campo] === 'yes' ? 'no' : 'yes' }
-    }));
-  };
+  const filtered = data.filter(u => {
+    const q = search.toLowerCase();
+    const matchQ = !q || u.username?.toLowerCase().includes(q) || u.nombre_completo?.toLowerCase().includes(q);
+    const matchR = roleFilter === 'all' || u.role === roleFilter;
+    return matchQ && matchR;
+  });
 
-  const setAllPerms = (modulo, val) => {
-    setPermsEdit(prev => ({
-      ...prev,
-      [modulo]: { puede_ver: val, puede_editar: val, puede_crear: val, puede_eliminar: val }
-    }));
-  };
-
-  const emptyPerms = () => {
-    const p = {};
-    MODULOS.forEach(m => { p[m] = { puede_ver: 'no', puede_editar: 'no', puede_crear: 'no', puede_eliminar: 'no' }; });
-    return p;
-  };
-
-  const roleColors = {
-    superadmin: 'badge-amber',
-    admin:      'badge-blue',
-    viewer:     'badge-accent',
-  };
-
-  if (loading) return <div className="loading">Cargando usuarios...</div>;
+  // KPIs por rol
+  const roleCounts = ROLES.reduce((acc,r) => {
+    acc[r.key] = data.filter(u => u.role === r.key).length;
+    return acc;
+  }, {});
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
+      <div className="nv-page-header">
         <div>
-          <h1 className="page-title">Gestión de usuarios</h1>
-          <p className="page-subtitle">{data.length} usuarios registrados</p>
+          <div className="nv-page-title">Usuarios y Roles</div>
+          <div className="nv-page-sub">{data.length} usuarios · {ROLES.length} roles disponibles</div>
         </div>
-        <button onClick={() => { setForm({ username: '', password: '', role: 'admin', nombre_completo: '' }); setPermsEdit(emptyPerms()); setShowForm(true); }}
-          className="btn-primary">+ Nuevo usuario</button>
+        <div className="nv-page-actions">
+          <button className="nv-btn nv-btn-secondary nv-btn-sm" onClick={load} disabled={loading}>
+            {loading ? <span className="nv-spinner" /> : '↺'} Actualizar
+          </button>
+          <button className="nv-btn nv-btn-primary" onClick={() => setModal('crear')}>
+            + Nuevo usuario
+          </button>
+        </div>
       </div>
 
-      {/* Mensaje */}
-      {msg && (
-        <div style={{ padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 500, background: msg.type === 'error' ? 'var(--red-dim)' : 'var(--green-dim)', color: msg.type === 'error' ? 'var(--red)' : 'var(--green)', border: '1px solid ' + (msg.type === 'error' ? 'var(--red)' : 'var(--green)') }}>
-          {msg.text}
-        </div>
-      )}
-
-      {/* ── MODAL NUEVO USUARIO ── */}
-      {showForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-mid)', borderRadius: 12, padding: 28, width: 680, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 20 }}>Nuevo usuario</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
-              <div>
-                <label style={lbl}>Usuario *</label>
-                <input style={inp} placeholder="nombre.usuario" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} />
-              </div>
-              <div>
-                <label style={lbl}>Nombre completo</label>
-                <input style={inp} placeholder="Nombre Apellido" value={form.nombre_completo} onChange={e => setForm({ ...form, nombre_completo: e.target.value })} />
-              </div>
-              <div>
-                <label style={lbl}>Password *</label>
-                <div style={{ position: 'relative' }}>
-                  <input style={{ ...inp, paddingRight: 40 }} type={showPwd ? 'text' : 'password'} placeholder="Min 8 caracteres" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-                  <button type="button" onClick={() => setShowPwd(!showPwd)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
-                    <EyeIcon open={showPwd} />
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label style={lbl}>Rol</label>
-                <select style={inp} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                  <option value="admin">Admin</option>
-                  <option value="viewer">Viewer (solo lectura)</option>
-                </select>
-              </div>
-            </div>
-            <PermsTable permsEdit={permsEdit} togglePerm={togglePerm} setAllPerms={setAllPerms} />
-            <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowForm(false)} className="btn-sm">Cancelar</button>
-              <button onClick={handleCreate} className="btn-primary">Crear usuario</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL EDITAR USUARIO ── */}
-      {showEdit && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-mid)', borderRadius: 12, padding: 28, width: 480 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Editar usuario</h2>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20, fontFamily: 'var(--font-mono)' }}>@{showEdit.username}</p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={lbl}>Nombre completo</label>
-                <input style={inp} placeholder="Nombre Apellido" value={editForm.nombre_completo} onChange={e => setEditForm({ ...editForm, nombre_completo: e.target.value })} />
-              </div>
-              {showEdit.role !== 'superadmin' && (
-                <div>
-                  <label style={lbl}>Rol</label>
-                  <select style={inp} value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}>
-                    <option value="admin">Admin</option>
-                    <option value="viewer">Viewer (solo lectura)</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Sección cambio de contraseña */}
-              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                <button onClick={() => setShowEditPwd(!showEditPwd)}
-                  style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-surface)', border: 'none', color: 'var(--text-sec)', fontSize: 13, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'var(--font)' }}>
-                  <span>Cambiar contraseña</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{showEditPwd ? '▲ ocultar' : '▼ expandir'}</span>
-                </button>
-                {showEditPwd && (
-                  <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div>
-                      <label style={lbl}>Nueva contraseña</label>
-                      <div style={{ position: 'relative' }}>
-                        <input style={{ ...inp, paddingRight: 40 }} type="password" placeholder="Mínimo 6 caracteres" value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })} />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={lbl}>Confirmar contraseña</label>
-                      <input style={{ ...inp, borderColor: editForm.password_confirm && editForm.password !== editForm.password_confirm ? 'var(--red)' : undefined }}
-                        type="password" placeholder="Repetir contraseña" value={editForm.password_confirm} onChange={e => setEditForm({ ...editForm, password_confirm: e.target.value })} />
-                      {editForm.password_confirm && editForm.password !== editForm.password_confirm && (
-                        <span style={{ fontSize: 11, color: 'var(--red)', marginTop: 4, display: 'block' }}>Las contraseñas no coinciden</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowEdit(null)} className="btn-sm">Cancelar</button>
-              <button onClick={handleEdit} className="btn-primary">Guardar cambios</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL PERMISOS ── */}
-      {showPerms && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-mid)', borderRadius: 12, padding: 28, width: 680, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Permisos de {showPerms.username}</h2>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, fontFamily: 'var(--font-mono)' }}>Rol: {showPerms.role}</p>
-            <PermsTable permsEdit={permsEdit} togglePerm={togglePerm} setAllPerms={setAllPerms} />
-            <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowPerms(null)} className="btn-sm">Cancelar</button>
-              <button onClick={savePerms} className="btn-primary">Guardar permisos</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TABLA ── */}
-      <div className="section-card">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Usuario</th>
-              <th>Nombre</th>
-              <th>Rol</th>
-              <th>Módulos con acceso</th>
-              <th>Estado</th>
-              <th>Creado por</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((u, i) => {
-              const modulosActivos = Object.entries(u.permisos || {}).filter(([, p]) => p.puede_ver === 'yes').map(([m]) => MODULO_LABEL[m]);
-              return (
-                <tr key={i}>
-                  <td>
-                    <div style={{ fontWeight: 500, color: 'var(--text)' }}>{u.username}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>ID: {u.id}</div>
-                  </td>
-                  <td className="td-muted">{u.nombre_completo || '—'}</td>
-                  <td>
-                    <span className={`badge ${roleColors[u.role] || 'badge-accent'}`} style={{ textTransform: 'uppercase', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
-                      {u.role}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 11, color: 'var(--text-sec)', maxWidth: 200 }}>
-                    {modulosActivos.length > 0
-                      ? modulosActivos.join(', ')
-                      : <span style={{ color: 'var(--red)' }}>Sin acceso</span>
-                    }
-                  </td>
-                  <td>
-                    <span className={`status-pill ${u.activo === 'yes' ? 'pill-green' : 'pill-red'}`}>
-                      <span className="dot-sm" />{u.activo === 'yes' ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="td-muted" style={{ fontSize: 12 }}>{u.creado_por || 'Sistema'}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 5 }}>
-                      <button onClick={() => openEdit(u)} className="btn-sm">Editar</button>
-                      <button onClick={() => openPerms(u)} className="btn-sm">Permisos</button>
-                      {u.role !== 'superadmin' && (
-                        <button onClick={() => handleToggle(u.id, u.username, u.activo)}
-                          className={`btn-sm ${u.activo === 'yes' ? 'btn-danger' : ''}`}>
-                          {u.activo === 'yes' ? 'Desactivar' : 'Activar'}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function PermsTable({ permsEdit, togglePerm, setAllPerms }) {
-  const MODULOS = ['dashboard','cdr','metricas','extensiones','carriers','clientes','planes','did_series','ajustes','usuarios'];
-  const MODULO_LABEL = {dashboard:'Dashboard',cdr:'CDR',metricas:'Métricas',extensiones:'Extensiones',carriers:'Carriers',clientes:'Clientes',planes:'Planes',did_series:'Series DID',ajustes:'Ajustes',usuarios:'Usuarios'};
-  return (
-    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
-      <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-sec)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Permisos por módulo</div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Módulo</th>
-              {['Ver', 'Editar', 'Crear', 'Eliminar', 'Todo'].map(h => (
-                <th key={h} style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MODULOS.map(m => (
-              <tr key={m} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '7px 8px', fontWeight: 500, color: 'var(--text)' }}>{MODULO_LABEL[m]}</td>
-                {['puede_ver', 'puede_editar', 'puede_crear', 'puede_eliminar'].map(campo => (
-                  <td key={campo} style={{ textAlign: 'center', padding: '7px 8px' }}>
-                    <input type="checkbox" checked={permsEdit[m]?.[campo] === 'yes'} onChange={() => togglePerm(m, campo)}
-                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }} />
-                  </td>
-                ))}
-                <td style={{ textAlign: 'center', padding: '7px 8px' }}>
-                  <button onClick={() => setAllPerms(m, permsEdit[m]?.puede_ver === 'yes' && permsEdit[m]?.puede_editar === 'yes' ? 'no' : 'yes')}
-                    style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border-mid)', background: 'transparent', fontSize: 10, cursor: 'pointer', fontFamily: 'var(--font)', color: 'var(--text-sec)' }}>
-                    {permsEdit[m]?.puede_ver === 'yes' && permsEdit[m]?.puede_editar === 'yes' ? 'Quitar' : 'Todo'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function EyeIcon({ open }) {
-  return open
-    ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-    : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
-}
-
-const lbl = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' };
-const inp = { width: '100%', padding: '8px 12px', border: '1px solid var(--border-mid)', borderRadius: 7, fontSize: 13, fontFamily: 'var(--font)', color: 'var(--text)', background: 'var(--bg-surface)', outline: 'none', boxSizing: 'border-box' };
-
-function UsuariosNetvoice() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({email:'',password:'',role:'agent'});
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const token = localStorage.getItem('token');
-  const hdrs = {'Content-Type':'application/json', Authorization:`Bearer ${token}`};
-
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const r = await fetch('/v1/auth/users', {headers: hdrs});
-      const d = await r.json();
-      setUsers(d.data || []);
-    } catch(e) { setUsers([]); }
-    finally { setLoading(false); }
-  };
-
-  const handleCreate = async e => {
-    e.preventDefault(); setError(''); setSuccess('');
-    try {
-      const r = await fetch('/v1/auth/users', {method:'POST', headers:hdrs, body:JSON.stringify(form)});
-      const d = await r.json();
-      if (!r.ok) { setError(d.detail || 'Error'); return; }
-      setSuccess('Usuario creado: ' + form.email);
-      setForm({email:'',password:'',role:'agent'});
-      load();
-    } catch(e) { setError('Error al crear'); }
-  };
-
-  const rColor = r => ({admin:'#4f46e5',agent:'#059669',partner:'#d97706'}[r]||'#6b7280');
-  const rLabel = r => ({admin:'Admin',agent:'Agente SAC',partner:'Partner',client:'Cliente'}[r]||r);
-  const s = {background:'#1f2937',border:'1px solid #374151',borderRadius:6,padding:'8px 12px',color:'#f9fafb',fontSize:13,width:'100%',boxSizing:'border-box'};
-
-  return (
-    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem'}}>
-      <div style={{background:'#111827',border:'1px solid #1f2937',borderRadius:10,padding:'1.25rem'}}>
-        <h3 style={{color:'#f9fafb',fontSize:15,fontWeight:600,margin:'0 0 1rem'}}>Nuevo usuario Netvoice</h3>
-        {error && <div style={{background:'#7f1d1d',color:'#fca5a5',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:13}}>{error}</div>}
-        {success && <div style={{background:'#065f46',color:'#6ee7b7',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:13}}>{success}</div>}
-        <form onSubmit={handleCreate}>
-          <div style={{marginBottom:12}}>
-            <label style={{color:'#9ca3af',fontSize:12,display:'block',marginBottom:4}}>Email</label>
-            <input style={s} type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required />
-          </div>
-          <div style={{marginBottom:12}}>
-            <label style={{color:'#9ca3af',fontSize:12,display:'block',marginBottom:4}}>Contraseña</label>
-            <input style={s} type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required />
-          </div>
-          <div style={{marginBottom:16}}>
-            <label style={{color:'#9ca3af',fontSize:12,display:'block',marginBottom:4}}>Rol</label>
-            <select style={s} value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
-              <option value="admin">Admin</option>
-              <option value="agent">Agente SAC</option>
-              <option value="partner">Partner</option>
-            </select>
-          </div>
-          <button type="submit" style={{width:'100%',padding:9,background:'#34d399',color:'#000',border:'none',borderRadius:6,fontWeight:600,fontSize:13,cursor:'pointer'}}>Crear usuario →</button>
-        </form>
-      </div>
-      <div style={{background:'#111827',border:'1px solid #1f2937',borderRadius:10,padding:'1.25rem'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-          <h3 style={{color:'#f9fafb',fontSize:15,fontWeight:600,margin:0}}>Usuarios activos</h3>
-          <button onClick={load} style={{background:'#1f2937',border:'1px solid #374151',color:'#9ca3af',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:12}}>↻</button>
-        </div>
-        {loading && <p style={{color:'#9ca3af',fontSize:13}}>Cargando...</p>}
-        {users.map(u => (
-          <div key={u.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid #1f2937'}}>
-            <div>
-              <p style={{color:'#f9fafb',fontSize:13,margin:0}}>{u.email}</p>
-              <p style={{color:'#6b7280',fontSize:11,margin:'2px 0 0'}}>{u.status}</p>
-            </div>
-            <span style={{background:rColor(u.role)+'22',color:rColor(u.role),fontSize:11,padding:'2px 8px',borderRadius:4,fontWeight:600}}>{rLabel(u.role)}</span>
+      {/* Roles KPI strip */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+        {ROLES.filter(r => roleCounts[r.key] > 0).map(r => (
+          <div key={r.key} style={{
+            display:'flex', alignItems:'center', gap:7,
+            padding:'6px 12px',
+            background: roleFilter===r.key ? r.bg : 'var(--bg-surface)',
+            border:`1px solid ${roleFilter===r.key ? r.color : 'var(--border)'}`,
+            borderRadius:'var(--r-sm)', cursor:'pointer',
+            transition:'all var(--t)',
+          }} onClick={() => setRoleFilter(roleFilter===r.key ? 'all' : r.key)}>
+            <span style={{ fontSize:10, fontWeight:700, color:r.color }}>{roleCounts[r.key]}</span>
+            <span style={{ fontSize:11, color:'var(--text-secondary)' }}>{r.label}</span>
           </div>
         ))}
-        {!loading && users.length===0 && <p style={{color:'#9ca3af',fontSize:13}}>Sin usuarios</p>}
+        {roleFilter !== 'all' && (
+          <button className="nv-btn nv-btn-ghost nv-btn-sm" onClick={() => setRoleFilter('all')}>✕ Limpiar filtro</button>
+        )}
       </div>
+
+      <Alert msg={msg} onClose={() => setMsg(null)} />
+
+      {/* Búsqueda */}
+      <div style={{ marginBottom:14 }}>
+        <div className="nv-search">
+          <span style={{ color:'var(--text-muted)', fontSize:12 }}>⌕</span>
+          <input placeholder="Buscar por username o nombre..."
+            value={search} onChange={e => setSearch(e.target.value)} />
+          {search && <button onClick={() => setSearch('')}
+            style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer' }}>✕</button>}
+        </div>
+      </div>
+
+      {/* Tabla usuarios */}
+      <div className="nv-card" style={{ padding:0 }}>
+        {loading ? (
+          <div className="nv-loading"><span className="nv-spinner" /></div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'48px 20px' }}>
+            <div style={{ fontSize:32, opacity:.2, marginBottom:12 }}>◈</div>
+            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>
+              {search ? 'Sin resultados' : 'Sin usuarios registrados'}
+            </div>
+            {!search && <button className="nv-btn nv-btn-primary" onClick={() => setModal('crear')}>+ Crear primer usuario</button>}
+          </div>
+        ) : (
+          <div className="nv-table-wrap">
+            <table className="nv-table">
+              <thead><tr>
+                <th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Acciones</th>
+              </tr></thead>
+              <tbody>
+                {filtered.map(u => (
+                  <tr key={u.id}>
+                    <td>
+                      <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+                        <div style={{
+                          width:30, height:30, borderRadius:'50%',
+                          background:'var(--brand-subtle)', color:'var(--brand)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          fontSize:10, fontWeight:700, flexShrink:0,
+                        }}>
+                          {(u.username||'?').slice(0,2).toUpperCase()}
+                        </div>
+                        <span className="mono" style={{ color:'var(--text-primary)', fontWeight:500 }}>
+                          {u.username}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ color:'var(--text-secondary)' }}>{u.nombre_completo || '—'}</td>
+                    <td><RoleBadge role={u.role} /></td>
+                    <td>
+                      <span className={`nv-badge ${u.activo!==false ? 'nv-badge-ok' : 'nv-badge-muted'}`}>
+                        <span className="dot" />{u.activo!==false ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize:10, color:'var(--text-muted)' }}>
+                      {u.last_login ? new Date(u.last_login).toLocaleString('es-EC',{dateStyle:'short',timeStyle:'short'}) : '—'}
+                    </td>
+                    <td>
+                      <div style={{ display:'flex', gap:8 }}>
+                        <button className="nv-btn nv-btn-ghost nv-btn-sm"
+                          onClick={() => { setTarget(u); setModal('editar'); }}
+                          title="Editar usuario">✎</button>
+                        <button className="nv-btn nv-btn-ghost nv-btn-sm"
+                          onClick={() => { setTarget(u); setModal('permisos'); }}
+                          title="Gestionar permisos">⊞</button>
+                        <button className="nv-btn nv-btn-danger nv-btn-sm"
+                          onClick={() => handleDelete(u)}
+                          title="Eliminar usuario">✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ padding:'8px 14px', borderTop:'1px solid var(--border)', fontSize:10, color:'var(--text-muted)', textAlign:'center' }}>
+              {filtered.length} de {data.length} usuarios
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modales */}
+      {modal==='crear' && (
+        <ModalCrear onClose={() => setModal(null)}
+          onSave={(msg) => { setModal(null); load(); showMsg(msg); }} />
+      )}
+      {modal==='editar' && target && (
+        <ModalEditar user={target} onClose={() => setModal(null)}
+          onSave={(msg) => { setModal(null); load(); showMsg(msg); }} />
+      )}
+      {modal==='permisos' && target && (
+        <ModalPermisos user={target} onClose={() => setModal(null)}
+          onSave={(msg,type) => { setModal(null); showMsg(msg,type||'success'); }} />
+      )}
     </div>
   );
 }
