@@ -508,3 +508,62 @@ def get_top_destinos(meses: int = 6, limit: int = 10, db: Session = Depends(get_
         GROUP BY dst ORDER BY minutos DESC LIMIT :limit
     """), {"meses": meses, "limit": limit})
     return {"data": [dict(r._mapping) for r in result.fetchall()]}
+
+# ─── NOC / HEALTH ─────────────────────────────────────────────
+import psutil as _psutil
+import subprocess as _sub
+import time as _time
+
+@app.get("/noc/health")
+def noc_health():
+    cpu  = _psutil.cpu_percent(interval=0.5)
+    mem  = _psutil.virtual_memory()
+    disk = _psutil.disk_usage("/")
+    up   = int(_time.time() - _psutil.boot_time())
+    d,h,m = up//86400, (up%86400)//3600, (up%3600)//60
+    return {
+        "status":       "online",
+        "cpu_pct":      round(cpu, 1),
+        "mem_total_mb": round(mem.total/1024/1024),
+        "mem_used_mb":  round(mem.used/1024/1024),
+        "mem_pct":      round(mem.percent, 1),
+        "disk_total_gb":round(disk.total/1024/1024/1024, 1),
+        "disk_used_gb": round(disk.used/1024/1024/1024, 1),
+        "disk_pct":     round(disk.percent, 1),
+        "uptime_sec":   up,
+        "uptime_str":   f"{d}d {h}h {m}m",
+        "load_avg":     [round(x,2) for x in _psutil.getloadavg()],
+    }
+
+@app.get("/noc/db")
+def noc_db(db: Session = Depends(get_db)):
+    try:
+        cdr_hoy = db.execute(text(
+            "SELECT COUNT(*) FROM cdr WHERE calldate >= CURDATE()"
+        )).scalar() or 0
+        row = db.execute(text(
+            "SHOW STATUS LIKE \'Threads_connected\'"
+        )).fetchone()
+        threads = int(row[1]) if row else 0
+        cdr_mes = db.execute(text(
+            "SELECT COUNT(*) FROM cdr WHERE calldate >= DATE_SUB(NOW(),INTERVAL 30 DAY)"
+        )).scalar() or 0
+        return {"status":"online","cdr_today":cdr_hoy,"cdr_month":cdr_mes,"connections":threads}
+    except Exception as e:
+        return {"status":"error","error":str(e)}
+
+@app.get("/noc/network")
+def noc_network():
+    try:
+        net  = _psutil.net_io_counters()
+        conns = len(_psutil.net_connections())
+        procs = len(_psutil.pids())
+        return {
+            "status":        "online",
+            "bytes_sent_mb": round(net.bytes_sent/1024/1024, 1),
+            "bytes_recv_mb": round(net.bytes_recv/1024/1024, 1),
+            "connections":   conns,
+            "processes":     procs,
+        }
+    except Exception as e:
+        return {"status":"error","error":str(e)}

@@ -3,148 +3,98 @@ import api from "../api";
 
 async function safe(fn) { try { return await fn(); } catch { return null; } }
 
-function NodeCard({ node }) {
-  const ok = node.status === "online";
+function GaugeBar({ label, pct, value, color, warn=70, danger=90 }) {
+  const c = pct>=danger?"var(--danger)":pct>=warn?"var(--warning)":color||"var(--success)";
   return (
-    <div style={{
-      background:"var(--bg-surface)", border:"1px solid var(--border)",
-      borderRadius:"var(--r-lg)", padding:"18px 20px",
-      borderLeft:"3px solid "+(ok?"var(--success)":"var(--danger)"),
-    }}>
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:14 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{
-            width:42, height:42, borderRadius:"var(--r-md)",
-            background:ok?"var(--success-bg)":"var(--danger-bg)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:20, flexShrink:0,
-          }}>{node.icon}</div>
-          <div>
-            <div style={{ fontSize:14, fontWeight:700, color:"var(--text-primary)" }}>{node.name}</div>
-            <div style={{ fontSize:11, color:"var(--text-muted)", fontFamily:"var(--font-mono)", marginTop:2 }}>{node.ip}</div>
-            <div style={{ fontSize:10, color:"var(--text-muted)", marginTop:1 }}>{node.description}</div>
-          </div>
-        </div>
-        <span className={"nv-badge "+(ok?"nv-badge-ok":"nv-badge-err")}>
-          <span className="dot"/>{ok?"Online":"Offline"}
-        </span>
+    <div style={{ marginBottom:10 }}>
+      <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:11 }}>
+        <span style={{ color:"var(--text-secondary)" }}>{label}</span>
+        <span style={{ color:c,fontFamily:"var(--font-mono)",fontWeight:700 }}>{value}</span>
       </div>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:node.extra?12:0 }}>
-        {node.version&&(
-          <span style={{ fontSize:10,fontWeight:600,padding:"2px 8px",background:"var(--bg-raised)",
-            color:"var(--text-secondary)",borderRadius:4,fontFamily:"var(--font-mono)",border:"1px solid var(--border)" }}>
-            {node.version}
-          </span>
-        )}
-        {(node.tags||[]).map(t=>(
-          <span key={t.label} style={{ fontSize:10,fontWeight:600,padding:"2px 8px",
-            background:t.color||"var(--brand-subtle)",color:t.text||"var(--brand)",
-            borderRadius:4,border:"1px solid "+(t.border||"var(--border-active)") }}>
-            {t.label}
-          </span>
-        ))}
+      <div className="nv-progress">
+        <div className="nv-progress-bar" style={{ width:pct+"%",background:c,transition:"width .6s ease" }}/>
       </div>
-      {node.extra&&(
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-          {node.extra.map(({label,value,color})=>(
-            <div key={label} style={{ background:"var(--bg-raised)",borderRadius:"var(--r-sm)",padding:"7px 10px" }}>
-              <div style={{ fontSize:9,textTransform:"uppercase",letterSpacing:".07em",color:"var(--text-muted)",marginBottom:2 }}>{label}</div>
-              <div style={{ fontSize:12,fontWeight:600,color:color||"var(--text-primary)",fontFamily:"var(--font-mono)" }}>{value}</div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-function Connector() {
+function StatBox({ label, value, color }) {
   return (
-    <div style={{ display:"flex",justifyContent:"center",margin:"4px 0" }}>
-      <div style={{ width:2,height:32,background:"linear-gradient(to bottom,var(--success),rgba(0,201,141,0.15))",borderRadius:1 }}/>
+    <div style={{ background:"var(--bg-raised)",borderRadius:"var(--r-sm)",padding:"9px 12px",textAlign:"center" }}>
+      <div style={{ fontFamily:"var(--font-mono)",fontSize:16,fontWeight:700,color:color||"var(--text-primary)" }}>{value}</div>
+      <div style={{ fontSize:9,textTransform:"uppercase",letterSpacing:".07em",color:"var(--text-muted)",marginTop:2 }}>{label}</div>
+    </div>
+  );
+}
+
+function NodeStatus({ name, ip, role, ok, icon }) {
+  return (
+    <div style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 11px",
+      background:"var(--bg-raised)",borderRadius:"var(--r-sm)",border:"1px solid var(--border)",marginBottom:6 }}>
+      <div style={{ width:7,height:7,borderRadius:"50%",flexShrink:0,
+        background:ok?"var(--success)":"var(--danger)",
+        boxShadow:ok?"0 0 6px var(--success)":"none" }}/>
+      <span style={{ fontSize:14,marginRight:4 }}>{icon}</span>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:12,fontWeight:500,color:"var(--text-primary)" }}>{name}</div>
+        <div style={{ fontSize:10,color:"var(--text-muted)",fontFamily:"var(--font-mono)" }}>{ip}</div>
+      </div>
+      <div style={{ textAlign:"right" }}>
+        <div style={{ fontSize:10,fontWeight:700,color:ok?"var(--success)":"var(--danger)" }}>{ok?"Online":"Offline"}</div>
+        <div style={{ fontSize:9,color:"var(--text-muted)" }}>{role}</div>
+      </div>
     </div>
   );
 }
 
 export default function NetworkMap() {
-  const [data,    setData]    = useState(null);
+  const [health,  setHealth]  = useState(null);
+  const [db,      setDb]      = useState(null);
+  const [net,     setNet]     = useState(null);
+  const [ext,     setExt]     = useState(null);
+  const [trunks,  setTrunks]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [ts,      setTs]      = useState(new Date());
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [ext,trunks,cdr] = await Promise.all([
+    const [h,d,n,e,t] = await Promise.all([
+      safe(()=>api.get("/noc/health")),
+      safe(()=>api.get("/noc/db")),
+      safe(()=>api.get("/noc/network")),
       safe(()=>api.get("/extensions/status")),
       safe(()=>api.get("/trunks")),
-      safe(()=>api.get("/cdr?limit=1")),
     ]);
-    setData({ext,trunks,cdr});
-    setTs(new Date());
+    setHealth(h?.data||null);
+    setDb(d?.data||null);
+    setNet(n?.data||null);
+    setExt(e?.data||null);
+    setTrunks(t?.data?.data||[]);
     setLoading(false);
+    setTs(new Date());
   },[]);
 
-  useEffect(()=>{ load(); const iv=setInterval(load,30000); return ()=>clearInterval(iv); },[load]);
+  useEffect(()=>{ load(); const iv=setInterval(load,15000); return ()=>clearInterval(iv); },[load]);
 
-  const registered   = data?.ext?.data?.registered?.length||0;
-  const regList      = (data?.ext?.data?.registered||[]).join(", ")||"—";
-  const trunkActivos = (data?.trunks?.data?.data||[]).filter(t=>t.activo==="yes").length;
-  const totalTrunks  = (data?.trunks?.data?.data||[]).length;
-  const totalCDR     = data?.cdr?.data?.total||0;
+  const registered   = ext?.registered?.length||0;
+  const trunkActivos = (trunks||[]).filter(t=>t.activo==="yes").length;
+  const allOk        = health?.status==="online" && db?.status==="online";
 
-  const SBC_ICON   = "⛲";
-  const PBX_ICON   = "☎";
-  const HA_ICON    = "⇄";
-  const DB_ICON    = "▣";
-  const WEB_ICON   = "◎";
-
-  const nodes = [
-    {
-      name:"Kamailio SBC", ip:"192.168.0.10:5060",
-      description:"Session Border Controller", icon:SBC_ICON, status:"online", version:"v5.5.4",
-      tags:[{label:"SIP:5060 UDP/TCP",color:"var(--brand-subtle)",text:"var(--brand)",border:"var(--border-active)"}],
-      extra:[{label:"Protocolo",value:"SIP/SDP"},{label:"Transporte",value:"UDP / TCP"}],
-    },
-    {
-      name:"Asterisk PBX", ip:"192.168.0.161:5060",
-      description:"Núcleo SIP / PBX", icon:PBX_ICON, status:"online", version:"v20.19.0",
-      tags:[
-        {label:registered+" ext. registradas",color:"var(--success-bg)",text:"var(--success)",border:"rgba(0,201,141,.3)"},
-        {label:"WS:8088 · WSS:8089",color:"var(--bg-raised)",text:"var(--text-muted)",border:"var(--border)"},
-      ],
-      extra:[{label:"Extensiones",value:registered+" reg.",color:"var(--success)"},{label:"Canales activos",value:"0",color:"var(--text-muted)"}],
-    },
-    {
-      name:"Asterisk HA", ip:"192.168.0.216:5060",
-      description:"Nodo HA — Alta Disponibilidad", icon:HA_ICON, status:"online", version:"v20.19.0",
-      tags:[{label:"HA Node",color:"var(--warning-bg)",text:"var(--warning)",border:"rgba(245,166,35,.3)"}],
-      extra:[{label:"Rol",value:"Standby"},{label:"Sync",value:"Activo",color:"var(--success)"}],
-    },
-    {
-      name:"MySQL 8.0", ip:"192.168.0.161:3306",
-      description:"Base de datos", icon:DB_ICON, status:"online", version:"v8.0",
-      tags:[{label:totalCDR+" CDRs hoy",color:"var(--warning-bg)",text:"var(--warning)",border:"rgba(245,166,35,.3)"}],
-      extra:[{label:"BD asterisk",value:"Online",color:"var(--success)"},{label:"BD netvoice",value:"Online",color:"var(--success)"}],
-    },
-    {
-      name:"Nginx + Panel", ip:"192.168.0.7:8443",
-      description:"Web + API Gateway", icon:WEB_ICON, status:"online", version:"v1.18",
-      tags:[
-        {label:"HTTPS:8443",color:"var(--success-bg)",text:"var(--success)",border:"rgba(0,201,141,.3)"},
-        {label:"API:8000",color:"var(--bg-raised)",text:"var(--text-muted)",border:"var(--border)"},
-      ],
-      extra:[{label:"Trunks activos",value:trunkActivos+"/"+totalTrunks,color:"var(--brand)"},{label:"SSL",value:"Lets Encrypt",color:"var(--success)"}],
-    },
+  const NODES = [
+    { name:"Kamailio SBC",  ip:"192.168.0.10",  role:"SBC",      ok:true,  icon:"⛲" },
+    { name:"Asterisk PBX",  ip:"192.168.0.161", role:"PBX",      ok:true,  icon:"☎" },
+    { name:"Asterisk HA",   ip:"192.168.0.216", role:"HA Node",  ok:true,  icon:"⇄" },
+    { name:"MySQL 8.0",     ip:"192.168.0.161", role:"Database", ok:db?.status==="online", icon:"▣" },
+    { name:"Nginx + Panel", ip:"192.168.0.7",   role:"Gateway",  ok:health?.status==="online", icon:"◎" },
   ];
-
-  const allOk = nodes.every(n=>n.status==="online");
 
   return (
     <div>
       <div className="nv-page-header">
         <div>
-          <div className="nv-page-title">Network Map</div>
+          <div className="nv-page-title">NOC — Centro de Operaciones</div>
           <div className="nv-page-sub">
-            Estado en tiempo real · Actualizado: {ts.toLocaleTimeString("es-EC",{hour12:false})}
+            Monitor en tiempo real · {ts.toLocaleTimeString("es-EC",{hour12:false})} · refresh 15s
           </div>
         </div>
         <div className="nv-page-actions">
@@ -154,34 +104,126 @@ export default function NetworkMap() {
         </div>
       </div>
 
-      <div className={"nv-alert "+(allOk?"nv-alert-ok":"nv-alert-err")} style={{ marginBottom:20 }}>
+      <div className={"nv-alert "+(allOk?"nv-alert-ok":"nv-alert-err")} style={{ marginBottom:16 }}>
         <div style={{ display:"flex",alignItems:"center",gap:8,flex:1 }}>
           <div style={{ width:8,height:8,borderRadius:"50%",background:"currentColor",animation:"blink 1.8s ease-in-out infinite" }}/>
-          <span style={{ fontWeight:600 }}>
-            {allOk?"Todos los nodos operativos":"Atencion: uno o mas nodos con problemas"}
-          </span>
+          <span style={{ fontWeight:600 }}>{allOk?"Sistema operativo — Todos los servicios online":"Atención: revisar servicios"}</span>
         </div>
-        <span style={{ fontSize:11,opacity:.7,fontFamily:"var(--font-mono)" }}>
-          {registered} extension(es) registrada(s): {regList}
+        <span style={{ fontSize:11,opacity:.8,fontFamily:"var(--font-mono)" }}>
+          Uptime: {health?.uptime_str||"—"}
         </span>
       </div>
 
-      <div style={{ background:"var(--bg-raised)",border:"1px solid var(--border)",borderRadius:"var(--r-md)",
-        padding:"10px 16px",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"center",gap:8 }}>
-        <div style={{ width:6,height:6,borderRadius:"50%",background:"var(--text-muted)" }}/>
-        <span style={{ fontSize:11,color:"var(--text-muted)",fontFamily:"var(--font-mono)" }}>
-          INTERNET • 186.101.238.135 • eneural.org:8443
-        </span>
-        <div style={{ width:6,height:6,borderRadius:"50%",background:"var(--text-muted)" }}/>
-      </div>
-
-      <div style={{ maxWidth:640,margin:"0 auto" }}>
-        {nodes.map((node,i)=>(
-          <div key={node.name}>
-            <NodeCard node={node}/>
-            {i<nodes.length-1&&<Connector/>}
+      <div className="nv-kpi-grid" style={{ marginBottom:16 }}>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">CPU</div>
+          <div className="nv-kpi-value" style={{ color:(health?.cpu_pct||0)>80?"var(--danger)":(health?.cpu_pct||0)>60?"var(--warning)":"var(--success)" }}>
+            {loading?<span className="nv-spinner"/>:(health?.cpu_pct??"—")+"%"}
           </div>
-        ))}
+          <div className="nv-kpi-sub">Load: {health?.load_avg?.[0]||"—"}</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">RAM</div>
+          <div className="nv-kpi-value" style={{ color:(health?.mem_pct||0)>85?"var(--danger)":(health?.mem_pct||0)>70?"var(--warning)":"var(--info)" }}>
+            {loading?<span className="nv-spinner"/>:(health?.mem_pct??"—")+"%"}
+          </div>
+          <div className="nv-kpi-sub">{health?.mem_used_mb||0}MB / {health?.mem_total_mb||0}MB</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Disco</div>
+          <div className="nv-kpi-value" style={{ color:(health?.disk_pct||0)>90?"var(--danger)":(health?.disk_pct||0)>75?"var(--warning)":"var(--text-primary)" }}>
+            {loading?<span className="nv-spinner"/>:(health?.disk_pct??"—")+"%"}
+          </div>
+          <div className="nv-kpi-sub">{health?.disk_used_gb||0}GB / {health?.disk_total_gb||0}GB</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">CDRs hoy</div>
+          <div className="nv-kpi-value" style={{ color:"var(--brand)" }}>
+            {loading?<span className="nv-spinner"/>:(db?.cdr_today??"—")}
+          </div>
+          <div className="nv-kpi-sub">{db?.cdr_month||0} este mes</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Extensiones</div>
+          <div className="nv-kpi-value" style={{ color:"var(--success)" }}>
+            {loading?<span className="nv-spinner"/>:registered}
+          </div>
+          <div className="nv-kpi-sub">Registradas</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Trunks activos</div>
+          <div className="nv-kpi-value" style={{ color:"var(--info)" }}>
+            {loading?<span className="nv-spinner"/>:trunkActivos}
+          </div>
+          <div className="nv-kpi-sub">SIP online</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Conexiones DB</div>
+          <div className="nv-kpi-value" style={{ color:"var(--text-primary)" }}>
+            {loading?<span className="nv-spinner"/>:(db?.connections??"—")}
+          </div>
+          <div className="nv-kpi-sub">MySQL threads</div>
+        </div>
+        <div className="nv-kpi">
+          <div className="nv-kpi-label">Procesos</div>
+          <div className="nv-kpi-value" style={{ color:"var(--text-primary)" }}>
+            {loading?<span className="nv-spinner"/>:(net?.processes??"—")}
+          </div>
+          <div className="nv-kpi-sub">Sistema</div>
+        </div>
+      </div>
+
+      <div className="nv-grid-2" style={{ marginBottom:14 }}>
+        <div className="nv-card">
+          <div className="nv-card-header">
+            <span className="nv-card-title">◈ Recursos voip-panel-01</span>
+            <span style={{ fontFamily:"var(--font-mono)",fontSize:10,color:"var(--text-muted)" }}>192.168.0.7</span>
+          </div>
+          {health ? (
+            <>
+              <GaugeBar label="CPU" pct={health.cpu_pct} value={health.cpu_pct+"%"} warn={60} danger={80}/>
+              <GaugeBar label="Memoria RAM" pct={health.mem_pct} value={health.mem_used_mb+"MB / "+health.mem_total_mb+"MB"} warn={70} danger={85}/>
+              <GaugeBar label="Disco /" pct={health.disk_pct} value={health.disk_used_gb+"GB / "+health.disk_total_gb+"GB"} warn={75} danger={90}/>
+              <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid var(--border-subtle)" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                  {health.load_avg.map((v,i)=>(
+                    <StatBox key={i} label={["Load 1m","Load 5m","Load 15m"][i]} value={v} color="var(--brand)"/>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : <div className="nv-loading"><span className="nv-spinner"/></div>}
+        </div>
+
+        <div className="nv-card">
+          <div className="nv-card-header">
+            <span className="nv-card-title">◉ Estado de nodos</span>
+            <span className={"nv-badge "+(allOk?"nv-badge-ok":"nv-badge-err")}>
+              <span className="dot"/>{allOk?"Todos OK":"Revisar"}
+            </span>
+          </div>
+          {NODES.map(n=><NodeStatus key={n.name} {...n}/>)}
+          <div style={{ marginTop:12,paddingTop:12,borderTop:"1px solid var(--border-subtle)" }}>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
+              <StatBox label="Red Tx" value={(net?.bytes_sent_mb||0)+"MB"} color="var(--brand)"/>
+              <StatBox label="Red Rx" value={(net?.bytes_recv_mb||0)+"MB"} color="var(--info)"/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="nv-card">
+        <div className="nv-card-header">
+          <span className="nv-card-title">▤ Actividad de base de datos</span>
+        </div>
+        {db ? (
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10 }}>
+            <StatBox label="CDRs hoy" value={(db.cdr_today||0).toLocaleString()} color="var(--brand)"/>
+            <StatBox label="CDRs este mes" value={(db.cdr_month||0).toLocaleString()} color="var(--info)"/>
+            <StatBox label="Conexiones activas" value={db.connections||0} color="var(--success)"/>
+            <StatBox label="Estado MySQL" value={db.status==="online"?"Online":"Error"} color={db.status==="online"?"var(--success)":"var(--danger)"}/>
+          </div>
+        ) : <div className="nv-loading"><span className="nv-spinner"/></div>}
       </div>
     </div>
   );
