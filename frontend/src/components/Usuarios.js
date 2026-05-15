@@ -5,6 +5,7 @@ const MODULOS = ['dashboard','cdr','metricas','extensiones','carriers','clientes
 const MODULO_LABEL = {dashboard:'Dashboard',cdr:'CDR',metricas:'Métricas',extensiones:'Extensiones',carriers:'Carriers',clientes:'Clientes',planes:'Planes',did_series:'Series DID',ajustes:'Ajustes',usuarios:'Usuarios'};
 
 export default function Usuarios() {
+  const [tabActiva, setTabActiva] = useState('sistema');
   const [data, setData]           = useState([]);
   const [loading, setLoading]     = useState(true);
   const [showForm, setShowForm]   = useState(false);
@@ -360,3 +361,87 @@ function EyeIcon({ open }) {
 
 const lbl = { fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' };
 const inp = { width: '100%', padding: '8px 12px', border: '1px solid var(--border-mid)', borderRadius: 7, fontSize: 13, fontFamily: 'var(--font)', color: 'var(--text)', background: 'var(--bg-surface)', outline: 'none', boxSizing: 'border-box' };
+
+function UsuariosNetvoice() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({email:'',password:'',role:'agent'});
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const token = localStorage.getItem('token');
+  const hdrs = {'Content-Type':'application/json', Authorization:`Bearer ${token}`};
+
+  useEffect(() => { load(); }, []);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/v1/auth/users', {headers: hdrs});
+      const d = await r.json();
+      setUsers(d.data || []);
+    } catch(e) { setUsers([]); }
+    finally { setLoading(false); }
+  };
+
+  const handleCreate = async e => {
+    e.preventDefault(); setError(''); setSuccess('');
+    try {
+      const r = await fetch('/v1/auth/users', {method:'POST', headers:hdrs, body:JSON.stringify(form)});
+      const d = await r.json();
+      if (!r.ok) { setError(d.detail || 'Error'); return; }
+      setSuccess('Usuario creado: ' + form.email);
+      setForm({email:'',password:'',role:'agent'});
+      load();
+    } catch(e) { setError('Error al crear'); }
+  };
+
+  const rColor = r => ({admin:'#4f46e5',agent:'#059669',partner:'#d97706'}[r]||'#6b7280');
+  const rLabel = r => ({admin:'Admin',agent:'Agente SAC',partner:'Partner',client:'Cliente'}[r]||r);
+  const s = {background:'#1f2937',border:'1px solid #374151',borderRadius:6,padding:'8px 12px',color:'#f9fafb',fontSize:13,width:'100%',boxSizing:'border-box'};
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem'}}>
+      <div style={{background:'#111827',border:'1px solid #1f2937',borderRadius:10,padding:'1.25rem'}}>
+        <h3 style={{color:'#f9fafb',fontSize:15,fontWeight:600,margin:'0 0 1rem'}}>Nuevo usuario Netvoice</h3>
+        {error && <div style={{background:'#7f1d1d',color:'#fca5a5',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:13}}>{error}</div>}
+        {success && <div style={{background:'#065f46',color:'#6ee7b7',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:13}}>{success}</div>}
+        <form onSubmit={handleCreate}>
+          <div style={{marginBottom:12}}>
+            <label style={{color:'#9ca3af',fontSize:12,display:'block',marginBottom:4}}>Email</label>
+            <input style={s} type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required />
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{color:'#9ca3af',fontSize:12,display:'block',marginBottom:4}}>Contraseña</label>
+            <input style={s} type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required />
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={{color:'#9ca3af',fontSize:12,display:'block',marginBottom:4}}>Rol</label>
+            <select style={s} value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
+              <option value="admin">Admin</option>
+              <option value="agent">Agente SAC</option>
+              <option value="partner">Partner</option>
+            </select>
+          </div>
+          <button type="submit" style={{width:'100%',padding:9,background:'#34d399',color:'#000',border:'none',borderRadius:6,fontWeight:600,fontSize:13,cursor:'pointer'}}>Crear usuario →</button>
+        </form>
+      </div>
+      <div style={{background:'#111827',border:'1px solid #1f2937',borderRadius:10,padding:'1.25rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+          <h3 style={{color:'#f9fafb',fontSize:15,fontWeight:600,margin:0}}>Usuarios activos</h3>
+          <button onClick={load} style={{background:'#1f2937',border:'1px solid #374151',color:'#9ca3af',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:12}}>↻</button>
+        </div>
+        {loading && <p style={{color:'#9ca3af',fontSize:13}}>Cargando...</p>}
+        {users.map(u => (
+          <div key={u.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid #1f2937'}}>
+            <div>
+              <p style={{color:'#f9fafb',fontSize:13,margin:0}}>{u.email}</p>
+              <p style={{color:'#6b7280',fontSize:11,margin:'2px 0 0'}}>{u.status}</p>
+            </div>
+            <span style={{background:rColor(u.role)+'22',color:rColor(u.role),fontSize:11,padding:'2px 8px',borderRadius:4,fontWeight:600}}>{rLabel(u.role)}</span>
+          </div>
+        ))}
+        {!loading && users.length===0 && <p style={{color:'#9ca3af',fontSize:13}}>Sin usuarios</p>}
+      </div>
+    </div>
+  );
+}
