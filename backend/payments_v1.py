@@ -144,6 +144,15 @@ def sandbox_pay(data: SandboxPayRequest, db: Session = Depends(get_db_nv)):
         db.execute(text("""
             UPDATE clients SET status = 'pending' WHERE id = :id
         """), {"id": payment.client_id})
+        # Webhook si tiene partner
+        client_row = db.execute(
+            text("SELECT partner_id FROM clients WHERE id = :id"),
+            {"id": payment.client_id}
+        ).fetchone()
+        if client_row and client_row.partner_id:
+            from app.webhook_engine import webhook_payment_approved
+            webhook_payment_approved(db, client_row.partner_id, payment.client_id,
+                                      float(payment.amount), result["gateway_ref"])
 
     db.commit()
 
@@ -246,3 +255,101 @@ def payment_status(client_id: str, db: Session = Depends(get_db_nv)):
         "payments":  [dict(r._mapping) for r in payments],
         "approved":  any(p.status == "approved" for p in payments)
     }
+
+# ─── PAYPHONE REAL ────────────────────────────────────────────
+class PayPhoneInitRequest(BaseModel):
+    payment_id: str
+    phone_number: str
+    amount_with_tax: float = 0
+    amount_without_tax: float = 0
+    tax: float = 0
+
+@router.post("/payphone/init")
+def payphone_init(data: PayPhoneInitRequest, request: Request, db: Session = Depends(get_db_nv)):
+    """Iniciar cobro PayPhone — genera link de pago"""
+    import httpx, os, json
+
+    token    = os.getenv("PAYPHONE_TOKEN", "")
+    store_id = os.getenv("PAYPHONE_STORE_ID", "")
+    env      = os.getenv("PAYPHONE_ENV", "sandbox")
+
+    payment = db.execute(
+        text("SELECT id, client_id, amount, status FROM payments WHERE id = :id"),
+        {"id": data.payment_id}
+    ).fetchone()
+    if not payment:
+        raise HTTPException(404, "Pago no encontrado")
+    if payment.status != "pending":
+        raise HTTPException(400, f"Pago ya procesado: {payment.status}")
+
+    amount_cents = int(float(payment.amount) * 100)
+
+    if env == "sandbox" or not token:
+        # Modo sandbox PayPhone — simular respuesta
+        return {
+            "status": "ok",
+            "mode": "sandbox",
+            "payment_id": data.payment_id,
+            "payphone_url": f"https://pay.payphonetodoesposible.com/pay/link/sandbox/{data.payment_id}",
+            "payment_url":  f"https://pay.payphonetodoesposible.com/pay/link/sandbox/{data.payment_id}",
+            "message": "Sandbox PayPhone — usa el endpoint /sandbox/pay para confirmar",
+            "sandbox_cards": {
+                "approved": "4111111111111111",
+                "declined":  "4000000000000002"
+            }
+        }
+
+    # Llamada real a PayPhone API
+    base_url = "https://pay.payphonetodoesposible.com/api"
+    headers  = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload  = {
+        "amount":             amount_cents,
+        "amountWithTax":      int(data.amount_with_tax * 100),
+        "amountWithoutTax":   int(data.amount_without_tax * 100),
+        "tax":                int(data.tax * 100),
+        "currency":           "USD",
+        "storeId":            store_id,
+        "reference":          data.payment_id,
+        "clientTransactionId":data.payment_id,
+        "phoneNumber":        data.phone_number,
+        "responseUrl":        f"{os.getenv('BASE_URL','https://panel.eneural.org')}/v1/payments/webhook/payphone",
+        "cancellationUrl":    f"{os.getenv('BASE_URL','https://panel.eneural.org')}/portal/pago?cancelled=1",
+    }
+    try:
+        r = httpx.post(f"{base_url}/button/Prepare", json=payload, headers=headers, timeout=15)
+        r.raise_for_status()
+        pp_data = r.json()
+        payment_url = pp_data.get("payWithCard") or pp_data.get("paymentUrl", "")
+        db.execute(text("UPDATE payments SET gateway_ref=:ref WHERE id=:id"),
+            {"ref": pp_data.get("transactionId",""), "id": data.payment_id})
+        db.commit()
+        return {
+            "status": "ok",
+            "mode": "live",
+            "payment_id": data.payment_id,
+            "payment_url": payment_url,
+            "transaction_id": pp_data.get("transactionId"),
+        }
+    except Exception as e:
+        logger.error(f"PayPhone error: {e}")
+        raise HTTPException(502, f"Error al conectar con PayPhone: {str(e)}")
+
+@router.get("/status/{payment_id}")
+def payment_status(payment_id: str, db: Session = Depends(get_db_nv)):
+    """Estado de un pago"""
+    p = db.execute(
+        text("SELECT id, client_id, gateway, amount, status, gateway_ref, paid_at, concept FROM payments WHERE id = :id"),
+        {"id": payment_id}
+    ).fetchone()
+    if not p:
+        raise HTTPException(404, "Pago no encontrado")
+    return dict(p._mapping)
+
+@router.get("/client/{client_id}")
+def client_payments(client_id: str, db: Session = Depends(get_db_nv)):
+    """Historial de pagos de un cliente"""
+    rows = db.execute(
+        text("SELECT * FROM payments WHERE client_id = :id ORDER BY created_at DESC"),
+        {"id": client_id}
+    ).fetchall()
+    return {"data": [dict(r._mapping) for r in rows]}
