@@ -8,7 +8,6 @@ import PortalPlan from './portal/PortalPlan';
 import PortalContrato from './portal/PortalContrato';
 import PortalPago from './portal/PortalPago';
 import PortalActivacion from './portal/PortalActivacion';
-
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './components/Login';
@@ -48,34 +47,35 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/sac/login" element={<SACLogin />} />
-          <Route path="/sac" element={<SACDashboard />} />
-          <Route path="/registro"          element={<PortalRegistro />} />
+          <Route path="/sac/login"          element={<SACLogin />} />
+          <Route path="/sac"                element={<SACDashboard />} />
+          <Route path="/registro"           element={<PortalRegistro />} />
           <Route path="/verificar"          element={<PortalVerificar />} />
           <Route path="/portal/plan"        element={<PortalPlan />} />
           <Route path="/portal/contrato"    element={<PortalContrato />} />
           <Route path="/portal/pago"        element={<PortalPago />} />
           <Route path="/portal/activacion"  element={<PortalActivacion />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/login"              element={<Login />} />
           <Route path="/*" element={
             <PrivateRoute>
               <Layout>
                 <Routes>
-                  <Route path="/"           element={<NetworkMap />} />
-                  <Route path="/dashboard"   element={<Dashboard />} />
-                  <Route path="/extensions" element={<Extensions />} />
-                  <Route path="/cdr"        element={<CDRPage />} />
-                  <Route path="/settings"   element={<Settings />} />
-                  <Route path="/carriers"   element={<Carriers />} />
-                  <Route path="/planes"     element={<Planes />} />
-                  <Route path="/clientes"   element={<Clientes />} />
-                  <Route path="/did-series" element={<DIDSeries />} />
-                  <Route path="/metrics"    element={<Metricas />} />
-                  <Route path="/network"    element={<NetworkMap />} />
-                  <Route path="/audit"     element={<AuditLog />} />
-                  <Route path="/softphone"  element={<Softphone />} />
-                  <Route path="/clientes-v2" element={<ClientesV2 />} />
-                  <Route path="/usuarios"   element={<Usuarios />} />
+                  <Route path="/"              element={<Dashboard />} />
+                  <Route path="/dashboard"     element={<Dashboard />} />
+                  <Route path="/extensions"    element={<Extensions />} />
+                  <Route path="/cdr"           element={<CDRPage />} />
+                  <Route path="/settings"      element={<Settings />} />
+                  <Route path="/carriers"      element={<Carriers />} />
+                  <Route path="/planes"        element={<Planes />} />
+                  <Route path="/clientes"      element={<Clientes />} />
+                  <Route path="/clientes-v2"   element={<ClientesV2 />} />
+                  <Route path="/dids"          element={<DIDSeries />} />
+                  <Route path="/did-series"    element={<DIDSeries />} />
+                  <Route path="/metricas"      element={<Metricas />} />
+                  <Route path="/network"       element={<NetworkMap />} />
+                  <Route path="/auditoria"     element={<AuditLog />} />
+                  <Route path="/softphone"     element={<Softphone />} />
+                  <Route path="/usuarios"      element={<Usuarios />} />
                 </Routes>
               </Layout>
             </PrivateRoute>
