@@ -1,3 +1,15 @@
-CREDENCIALES.txt
-*.key
-*.pem
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node
+node_modules/
+build/
+.env.local
+
+# OS
+.DS_Store
+*.log
