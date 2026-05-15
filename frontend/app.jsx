@@ -85,7 +85,7 @@ const Nav = () => (
     </div>
     <div className="nav-right">
       <StatusPill />
-      <a href="/login" className="btn btn-panel btn-sm">
+      <a href="https://panel.eneural.org/login" className="btn btn-panel btn-sm">
         Acceder al panel
         <ArrowRight />
       </a>
@@ -254,11 +254,11 @@ const Hero = () => {
           crítica — cuando todo lo demás falla.
         </p>
         <div className="hero-cta">
-          <a href="/registro" className="btn btn-primary btn-lg">
+          <a href="https://panel.eneural.org/registro" className="btn btn-primary btn-lg">
             Contratar línea
             <ArrowRight />
           </a>
-          <a href="/login" className="btn btn-ghost btn-lg">
+          <a href="https://panel.eneural.org/login" className="btn btn-ghost btn-lg">
             Acceder al panel
           </a>
         </div>
@@ -679,7 +679,7 @@ const AccessPortals = () => (
           tag="Cliente"
           title="Contratar línea"
           desc="Registra tu empresa, selecciona un plan, firma el contrato y activa tu línea telefónica IP."
-          href="/registro"
+          href="https://panel.eneural.org/registro"
           color="#34d399"
           primary
         />
@@ -687,21 +687,21 @@ const AccessPortals = () => (
           tag="Agente SAC"
           title="Panel de atención"
           desc="Registra clientes asistidos, gestiona contratos, procesa pagos y activa líneas en nombre del cliente."
-          href="/sac/login"
+          href="https://panel.eneural.org/sac/login"
           color="#60a5fa"
         />
         <AccessCard
           tag="Administrador"
           title="Panel admin"
           desc="Gestión completa: extensiones, troncales, CDR, métricas, clientes, DIDs y configuración del sistema."
-          href="/login"
+          href="https://panel.eneural.org/login"
           color="#a78bfa"
         />
         <AccessCard
           tag="Partner / API"
           title="Documentación API"
           desc="Integra Netvoice en tu plataforma. Registro de clientes, gestión de DIDs y webhooks en tiempo real."
-          href="/docs"
+          href="https://panel.eneural.org/docs"
           color="#fb923c"
         />
       </div>
@@ -768,7 +768,7 @@ const Closing = () => (
         e<span className="brand-dot">.</span>neural carrier-grade.
       </p>
       <div className="closing-cta">
-        <a href="/login" className="btn btn-primary btn-lg">
+        <a href="https://panel.eneural.org/login" className="btn btn-primary btn-lg">
           Acceder al panel
           <ArrowRight />
         </a>
