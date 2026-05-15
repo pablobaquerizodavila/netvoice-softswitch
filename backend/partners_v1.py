@@ -188,3 +188,23 @@ def openapi_info():
             "payment_approved":  "POST {webhook_url} body: {event, client_id, amount, ref}"
         }
     }
+
+
+@router.post("/{partner_id}/webhook-test", dependencies=[Depends(require_roles("admin"))])
+def test_webhook(partner_id: str, db: Session = Depends(get_db_nv)):
+    """Enviar webhook de prueba al partner"""
+    from app.webhook_engine import fire_webhook
+    partner = db.execute(
+        text("SELECT id, name, webhook_url FROM partners WHERE id = :id"),
+        {"id": partner_id}
+    ).fetchone()
+    if not partner:
+        raise HTTPException(404, "Partner no encontrado")
+    if not partner.webhook_url:
+        raise HTTPException(400, "El partner no tiene webhook_url configurado")
+
+    fire_webhook(db, partner_id, "test.ping", {
+        "message": "Webhook de prueba desde Netvoice",
+        "partner_name": partner.name
+    })
+    return {"status": "ok", "message": f"Webhook enviado a {partner.webhook_url}"}
