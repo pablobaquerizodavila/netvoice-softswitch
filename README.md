@@ -9,72 +9,10 @@ Plataforma de telefonía IP carrier-grade con onboarding self-service, gestión 
 | Componente | IP | Descripción |
 |---|---|---|
 | NAS Synology DS1821+ | — | Hypervisor VMware, host de VMs |
-| voip-lab-01 | 192.168.0.161 | Asterisk + MySQL |
+| voip-lab-01 | 192.168.0.161 | Asterisk 20.19.0 + MySQL 8.0 |
 | voip-panel-01 | 192.168.0.7 | FastAPI + React + Nginx |
 | Kamailio SBC | 192.168.0.10 | Session Border Controller v5.5.4 |
 | voip-ha-01 | 192.168.0.216 | Asterisk HA Node v20.19.0 |
-
-### voip-lab-01 (192.168.0.161)
-- Ubuntu 22.04 LTS
-- Asterisk 20.19.0 con PJSIP
-- MySQL 8.0 — bases: asterisk y netvoice
-- CDR via cdr_adaptive_odbc
-- ARI habilitado en puerto 8088
-
-### voip-panel-01 (192.168.0.7)
-- Ubuntu 22.04 LTS
-- FastAPI (puerto 8000)
-- React (build estático servido por Nginx)
-- Nginx proxy reverso HTTPS puerto 8443
-
----
-
-## Portales del sistema
-
-| Portal | URL | Rol |
-|---|---|---|
-| Site principal | https://eneural.org/ | Público |
-| Contratar línea | https://eneural.org/registro | Cliente self-service |
-| Panel admin | https://eneural.org/login | Admin / Agente |
-| Panel SAC | https://eneural.org/sac/login | Agente SAC |
-| API docs | https://eneural.org/docs | Partner / Developer |
-| API v1 | https://eneural.org/v1/ | Partner / API |
-| ARI Asterisk | http://192.168.0.161:8088/ari | Interno |
-
----
-
-## Flujo de onboarding completo
-
-Cliente registro, verificar email, seleccionar plan, firma contrato OTP SHA-256, pago sandbox/PayPhone/Stripe, activacion automatica: troncal + DID ARCOTEL + creds SIP + PJSIP Asterisk. Progreso 6/6 completed.
-
----
-
-## Contextos PJSIP en Asterisk
-
-| Contexto | Uso |
-|---|---|
-| internal | Extensiones internas de la empresa |
-| from-client | Lineas SIP de clientes Netvoice |
-| from-external | Llamadas entrantes desde troncales |
-
----
-
-## Backup
-
-Ejecutar en voip-panel-01:
-  python3 ~/netvoice_backup.py
-
-Incluye: codigo fuente, build React, dump asterisk, dump netvoice, git push, compresion, rotacion 10 backups.
-
----
-
-## Credenciales del sistema
-
-| Usuario | Email | Password | Rol |
-|---------|-------|----------|-----|
-| Admin | admin@netvoice.ec | Admin1234! | admin |
-| Agente SAC | sac@netvoice.ec | Sac2024# | agent |
-| Partner Demo | partner@demo.ec | — | partner |
 
 ---
 
@@ -82,7 +20,6 @@ Incluye: codigo fuente, build React, dump asterisk, dump netvoice, git push, com
 
 | Portal | URL |
 |--------|-----|
-| Site principal | https://eneural.org |
 | Panel admin / SAC | https://panel.eneural.org/login |
 | Portal cliente | https://panel.eneural.org/registro |
 | Agente SAC | https://panel.eneural.org/sac/login |
@@ -92,12 +29,105 @@ Incluye: codigo fuente, build React, dump asterisk, dump netvoice, git push, com
 
 ---
 
-## Pendientes
+## Credenciales del sistema
 
-- [ ] SMTP real para OTP y verificacion de email (actualmente en log)
-- [ ] Pasarela de pago real PayPhone o Stripe (sandbox listo)
-- [ ] Motor de facturacion recurrente CDR a factura mensual
-- [ ] Grafana + Prometheus esperando NAS DS1621+
-- [ ] Completar tabs Netvoice v1 en pantalla Usuarios del panel admin
-- [ ] App movil desktop Electron o React Native
-- [ ] Fase 4 Media Server separado FreeSWITCH o Janus
+| Usuario | Email | Password | Rol |
+|---------|-------|----------|-----|
+| Admin | admin@netvoice.ec | Admin1234! | admin |
+| Agente SAC | sac@netvoice.ec | Sac2024# | agent |
+
+---
+
+## Stack técnico
+
+- **Frontend:** React 19 + CRA + react-router-dom v7
+- **Build:** `cd frontend && npm run build` → `frontend/build/`
+- **Backend:** FastAPI (puerto 8000) + SQLAlchemy + MySQL 8.0
+- **Web:** Nginx HTTPS → `frontend/build/` (fuente única repo Git)
+- **Asterisk:** 20.19.0 PJSIP + CDR via cdr_adaptive_odbc
+- **Design system:** Sora + JetBrains Mono, dark mode carrier-class
+
+---
+
+## Flujo de trabajo
+
+```bash
+# 1. Editar código
+~/netvoice-softswitch/frontend/src/
+
+# 2. Build y deploy
+cd ~/netvoice-softswitch/frontend && npm run build
+
+# 3. Cierre de hito — backup completo
+cd ~/netvoice-softswitch
+git add . && git commit -m "feat: descripción" && git push
+python3 ~/netvoice_backup.py
+```
+
+---
+
+## Roadmap — estado actual
+
+### ✅ Fase 1 — Fundación Carrier-Class (en progreso)
+
+| Hito | Descripción | Estado |
+|------|-------------|--------|
+| 1 | Shell carrier-class: design system dark, Sidebar pro, layout | ✅ Completado |
+| 2 | Dashboard VoIP: KPIs reales ASR/ACD, sparkline, CDR live | ✅ Completado |
+| 3 | Upgrade Clientes: tabs SAC/Admin/Partner, historial, docs | 🔄 Pendiente |
+| 4 | Upgrade SIP Trunks: codecs, CPS, canales, estado registro | 🔄 Pendiente |
+| 5 | Upgrade DID Management: inventario, asignación, enrutamiento | 🔄 Pendiente |
+| 6 | Upgrade Roles/Permisos: 10 perfiles, control granular | 🔄 Pendiente |
+
+### 🔄 Fase 2 — Motor Comercial y Operativo
+
+| Hito | Descripción | Estado |
+|------|-------------|--------|
+| 7  | LCR/Routing: rutas, failover, simulador | ⏳ Fase 2 |
+| 8  | Tarifas: rate decks, márgenes, simulador rentabilidad | ⏳ Fase 2 |
+| 9  | CDRs completo: filtros avanzados, análisis SIP codes | ⏳ Fase 2 |
+| 10 | Billing: prepago/postpago, facturas, corte automático | ⏳ Fase 2 |
+| 11 | Carriers/Proveedores: evaluación calidad, ASR por carrier | ⏳ Fase 2 |
+| 12 | Portal Cliente self-service | ⏳ Fase 2 |
+| 13 | Provisionamiento rápido: wizard, checklist | ⏳ Fase 2 |
+| 14 | Tickets y soporte: SLA, historial, agentes | ⏳ Fase 2 |
+| 15 | SMTP real para OTP | ⏳ Fase 2 |
+| 16 | Pasarela de pago real: PayPhone / Stripe | ⏳ Fase 2 |
+
+### ⏳ Fase 3 — NOC, Seguridad y Revendedores
+
+| Hito | Descripción | Estado |
+|------|-------------|--------|
+| 17 | NOC Dashboard: latencia, jitter, alarmas 24/7 | ⏳ Fase 3 |
+| 18 | Antifraude: detección anomalías, bloqueo automático | ⏳ Fase 3 |
+| 19 | Portal Revendedor White Label | ⏳ Fase 3 |
+| 20 | Auditoría: logs acceso, cambios config | ⏳ Fase 3 |
+| 21 | Configuración general: SMTP, branding, multiempresa | ⏳ Fase 3 |
+| 22 | API Center: tokens, documentación, logs de uso | ⏳ Fase 3 |
+
+### ⏳ Fase 4 — Escala Carrier
+
+| Hito | Descripción | Estado |
+|------|-------------|--------|
+| 23 | Media Server: FreeSWITCH o Janus en VM separada | ⏳ Fase 4 |
+| 24 | App móvil/desktop: React Native o Electron | ⏳ Fase 4 |
+| 25 | HA completo: failover automático Asterisk | ⏳ Fase 4 |
+
+---
+
+## VMs adicionales planificadas
+
+| VM | IP tentativa | Propósito | Fase |
+|----|-------------|-----------|------|
+| voip-monitor-01 | 192.168.0.50 | Grafana + Prometheus | Fase 3 |
+| voip-media-01 | 192.168.0.60 | FreeSWITCH / Janus | Fase 4 |
+
+---
+
+## Backup
+
+```bash
+python3 ~/netvoice_backup.py
+```
+
+Incluye: código fuente, build React, dump asterisk, dump netvoice, git push, compresión, rotación 10 backups.
