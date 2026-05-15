@@ -1,4 +1,6 @@
 import './App.css';
+import SACLogin from './sac/SACLogin';
+import SACDashboard from './sac/SACDashboard';
 import PortalRegistro from './portal/PortalRegistro';
 import PortalVerificar from './portal/PortalVerificar';
 import PortalPlan from './portal/PortalPlan';
@@ -45,6 +47,8 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/sac/login" element={<SACLogin />} />
+          <Route path="/sac" element={<SACDashboard />} />
           <Route path="/registro"          element={<PortalRegistro />} />
           <Route path="/verificar"          element={<PortalVerificar />} />
           <Route path="/portal/plan"        element={<PortalPlan />} />
