@@ -75,7 +75,7 @@ python3 ~/netvoice_backup.py
 | 1 | Shell carrier-class: design system dark, Sidebar pro, layout | ✅ Completado |
 | 2 | Dashboard VoIP: KPIs reales ASR/ACD, sparkline, CDR live | ✅ Completado |
 | 3 | Upgrade Clientes: tabs SAC/Admin/Partner, historial, docs | ✅ Completado |
-| 4 | Upgrade SIP Trunks: codecs, CPS, canales, estado registro | 🔄 Pendiente |
+| 4 | Upgrade Extensiones SIP: codecs, registro, CRUD carrier | ✅ Completado |
 | 5 | Upgrade DID Management: inventario, asignación, enrutamiento | 🔄 Pendiente |
 | 6 | Upgrade Roles/Permisos: 10 perfiles, control granular | 🔄 Pendiente |
 
