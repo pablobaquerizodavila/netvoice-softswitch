@@ -53,7 +53,7 @@ def _asterisk_reload_pjsip():
         return False
 
 
-def _create_pjsip_endpoint(sip_user: str, sip_pass: str, context: str = "from-internal") -> bool:
+def _create_pjsip_endpoint(sip_user: str, sip_pass: str, context: str = "from-client") -> bool:
     """Crear endpoint PJSIP en Asterisk via MySQL directo"""
     return True
 
@@ -208,7 +208,7 @@ def activate_client_line(
     SessionAsterisk = sessionmaker(bind=engine_asterisk)
     db_ast = SessionAsterisk()
 
-    pjsip_ok = _create_pjsip_via_mysql(sip_user, sip_password, "from-internal", db_ast)
+    pjsip_ok = _create_pjsip_via_mysql(sip_user, sip_password, "from-client", db_ast)
     db_ast.close()
 
     if not pjsip_ok:
