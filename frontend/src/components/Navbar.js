@@ -2,61 +2,22 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-
   return (
-    <nav style={styles.nav}>
-      <span style={styles.brand}>Netvoice Panel</span>
-      <div style={styles.right}>
-        <span style={styles.username}>{user?.username}</span>
-        {user?.role === 'admin' && <span style={styles.badge}>admin</span>}
-        <button style={styles.logoutBtn} onClick={logout}>Salir</button>
+    <nav className="navbar">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+          voip-panel-01
+        </span>
+        <span style={{ color: 'var(--border-mid)', fontSize: 10 }}>·</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>192.168.0.7</span>
+      </div>
+      <div className="navbar-right">
+        <span className="navbar-user">{user?.username}</span>
+        {user?.role === 'admin' && (
+          <span className="badge-role">admin</span>
+        )}
+        <button className="btn-logout" onClick={logout}>Salir</button>
       </div>
     </nav>
   );
 }
-
-const styles = {
-  nav: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0 24px',
-    height: 56,
-    background: '#1e293b',
-    borderBottom: '1px solid #334155',
-  },
-  brand: {
-    color: '#38bdf8',
-    fontWeight: 700,
-    fontSize: 18,
-    letterSpacing: 0.5,
-  },
-  right: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  username: {
-    color: '#cbd5e1',
-    fontSize: 14,
-  },
-  badge: {
-    background: '#0ea5e9',
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 700,
-    padding: '2px 8px',
-    borderRadius: 999,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  logoutBtn: {
-    background: 'transparent',
-    border: '1px solid #475569',
-    color: '#94a3b8',
-    borderRadius: 6,
-    padding: '5px 14px',
-    fontSize: 13,
-    cursor: 'pointer',
-  },
-};
