@@ -76,7 +76,7 @@ python3 ~/netvoice_backup.py
 | 2 | Dashboard VoIP: KPIs reales ASR/ACD, sparkline, CDR live | ✅ Completado |
 | 3 | Upgrade Clientes: tabs SAC/Admin/Partner, historial, docs | ✅ Completado |
 | 4 | Upgrade Extensiones SIP: codecs, registro, CRUD carrier | ✅ Completado |
-| 5 | Upgrade DID Management: inventario, asignación, enrutamiento | 🔄 Pendiente |
+| 5 | DID Management: rangos ARCOTEL, asignacion, KPIs | ✅ Completado |
 | 6 | Upgrade Roles/Permisos: 10 perfiles, control granular | 🔄 Pendiente |
 
 ### 🔄 Fase 2 — Motor Comercial y Operativo
