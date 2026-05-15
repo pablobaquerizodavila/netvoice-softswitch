@@ -87,7 +87,69 @@ def _verify_otp(client_id: str, otp: str) -> bool:
     return True
 
 def _send_otp(email: str, otp: str, name: str):
+    import smtplib, os
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", "noreply@linkotel.com")
+    smtp_name = os.getenv("SMTP_FROM_NAME", "Netvoice")
+
+    # Siempre loguear para debug
     logger.info(f"OTP → {email} | code: {otp} | name: {name}")
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        logger.warning("SMTP no configurado — OTP solo en log")
+        return
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Tu codigo de verificacion Netvoice: {otp}"
+        msg["From"]    = f"{smtp_name} <{smtp_from}>"
+        msg["To"]      = email
+
+        html = f"""
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+          <div style="background:#0b1120;border-radius:12px;padding:28px;text-align:center;">
+            <h2 style="color:#1a8cff;margin:0 0 8px">Netvoice</h2>
+            <p style="color:#8b97aa;margin:0 0 24px;font-size:13px">Carrier Platform</p>
+            <p style="color:#e8edf5;font-size:15px;margin:0 0 20px">Hola <strong>{name}</strong>,</p>
+            <p style="color:#8b97aa;font-size:13px;margin:0 0 24px">
+              Tu codigo de verificacion para firmar el contrato de servicio es:
+            </p>
+            <div style="background:#162035;border-radius:10px;padding:20px;margin:0 0 24px;">
+              <span style="font-family:monospace;font-size:36px;font-weight:700;letter-spacing:8px;color:#00c98d;">
+                {otp}
+              </span>
+            </div>
+            <p style="color:#4a5568;font-size:12px;margin:0">
+              Este codigo expira en 10 minutos.<br>
+              Si no solicitaste esto, ignora este mensaje.
+            </p>
+          </div>
+          <p style="color:#4a5568;font-size:11px;text-align:center;margin-top:16px;">
+            Linkotel S.A. — Servicio de Telefonia IP
+          </p>
+        </div>
+        """
+
+        txt = f"Tu codigo OTP Netvoice: {otp}\n\nEste codigo expira en 10 minutos."
+        msg.attach(MIMEText(txt, "plain"))
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, email, msg.as_string())
+
+        logger.info(f"OTP enviado por SMTP a {email}")
+
+    except Exception as e:
+        logger.error(f"Error SMTP al enviar OTP a {email}: {e}")
 
 
 # ─── Generar contenido del contrato ──────────────────────────
