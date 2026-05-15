@@ -33,12 +33,12 @@ Plataforma de telefonía IP carrier-grade con onboarding self-service, gestión 
 
 | Portal | URL | Rol |
 |---|---|---|
-| Site principal | https://eneural.org:8443/ | Público |
-| Contratar línea | https://eneural.org:8443/registro | Cliente self-service |
-| Panel admin | https://eneural.org:8443/login | Admin / Agente |
-| Panel SAC | https://eneural.org:8443/sac/login | Agente SAC |
-| API docs | https://eneural.org:8443/docs | Partner / Developer |
-| API v1 | https://eneural.org:8443/v1/ | Partner / API |
+| Site principal | https://eneural.org/ | Público |
+| Contratar línea | https://eneural.org/registro | Cliente self-service |
+| Panel admin | https://eneural.org/login | Admin / Agente |
+| Panel SAC | https://eneural.org/sac/login | Agente SAC |
+| API docs | https://eneural.org/docs | Partner / Developer |
+| API v1 | https://eneural.org/v1/ | Partner / API |
 | ARI Asterisk | http://192.168.0.161:8088/ari | Interno |
 
 ---
