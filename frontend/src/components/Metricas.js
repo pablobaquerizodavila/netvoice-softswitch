@@ -1,178 +1,253 @@
-import { useState, useEffect } from 'react';
-import api from '../api';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { useState, useEffect, useCallback } from "react";
+import api from "../api";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 
-const COLORS = { CEL:'#f59e0b', LOC:'#3b82f6', NAC:'#10b981', internal:'#8b5cf6', default:'#94a3b8' };
+async function safe(fn) { try { return await fn(); } catch { return null; } }
+
+const BAR_COLORS = ["#1a8cff","#00c98d","#f5a623","#ff4757","#54a0ff","#a29bfe"];
+
+const TOOLTIP_STYLE = {
+  background:"#162035", border:"1px solid rgba(255,255,255,0.07)",
+  borderRadius:8, fontSize:11, color:"#e8edf5",
+};
+
+function KpiCard({ label, value, sub, color }) {
+  return (
+    <div className="nv-kpi">
+      <div className="nv-kpi-label">{label}</div>
+      <div className="nv-kpi-value" style={{ color:color||"var(--text-primary)" }}>{value??<span className="nv-spinner"/>}</div>
+      {sub && <div className="nv-kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return <div style={{ fontSize:12, fontWeight:700, color:"var(--text-secondary)", textTransform:"uppercase", letterSpacing:".08em", margin:"20px 0 12px" }}>{children}</div>;
+}
 
 export default function Metricas() {
-  const [resumen, setResumen] = useState(null);
-  const [porMes, setPorMes] = useState([]);
-  const [porContexto, setPorContexto] = useState([]);
-  const [topOrigenes, setTopOrigenes] = useState([]);
-  const [topDestinos, setTopDestinos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [meses, setMeses] = useState(6);
+  const [resumen,      setResumen]      = useState(null);
+  const [porMes,       setPorMes]       = useState([]);
+  const [porContexto,  setPorContexto]  = useState([]);
+  const [topOrigenes,  setTopOrigenes]  = useState([]);
+  const [topDestinos,  setTopDestinos]  = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [meses,        setMeses]        = useState(6);
 
-  const load = (m) => {
+  const load = useCallback(async (m) => {
     setLoading(true);
-    Promise.all([
-      api.get('/metricas/resumen?meses='+m),
-      api.get('/metricas/por-mes?meses='+m),
-      api.get('/metricas/por-contexto?meses='+m),
-      api.get('/metricas/top-origenes?meses='+m),
-      api.get('/metricas/top-destinos?meses='+m),
-    ]).then(([r,pm,pc,to,td]) => {
-      setResumen(r.data);
-      setPorMes(pm.data.data||[]);
-      setPorContexto(pc.data.data||[]);
-      setTopOrigenes(to.data.data||[]);
-      setTopDestinos(td.data.data||[]);
-    }).finally(()=>setLoading(false));
-  };
+    const mm = m||meses;
+    const [r,pm,pc,to,td] = await Promise.all([
+      safe(()=>api.get("/metricas/resumen?meses="+mm)),
+      safe(()=>api.get("/metricas/por-mes?meses="+mm)),
+      safe(()=>api.get("/metricas/por-contexto?meses="+mm)),
+      safe(()=>api.get("/metricas/top-origenes?meses="+mm+"&limit=10")),
+      safe(()=>api.get("/metricas/top-destinos?meses="+mm+"&limit=10")),
+    ]);
+    setResumen(r?.data||null);
+    setPorMes((pm?.data?.data||[]).map(d=>({
+      ...d,
+      minutos:    Math.round(parseFloat(d.minutos)||0),
+      min_cel:    Math.round(parseFloat(d.min_cel)||0),
+      min_loc:    Math.round(parseFloat(d.min_loc)||0),
+      min_nac:    Math.round(parseFloat(d.min_nac)||0),
+      min_onnet:  Math.round(parseFloat(d.min_onnet)||0),
+      llamadas:   parseInt(d.llamadas)||0,
+    })));
+    setPorContexto((pc?.data?.data||[]).map(d=>({
+      name: d.contexto||"otros",
+      value: Math.round(parseFloat(d.minutos)||0),
+      llamadas: parseInt(d.llamadas)||0,
+    })));
+    setTopOrigenes((to?.data?.data||[]).map(d=>({
+      numero: d.numero||"—",
+      minutos: Math.round(parseFloat(d.minutos)||0),
+      llamadas: parseInt(d.llamadas)||0,
+    })));
+    setTopDestinos((td?.data?.data||[]).map(d=>({
+      numero: d.numero||"—",
+      minutos: Math.round(parseFloat(d.minutos)||0),
+      llamadas: parseInt(d.llamadas)||0,
+    })));
+    setLoading(false);
+  }, [meses]);
 
-  useEffect(()=>{ load(meses); },[meses]);
+  useEffect(()=>{ load(); },[load]);
 
-  const fmt = (n) => n ? parseFloat(n).toLocaleString('es-EC', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00';
+  const handleMeses = (m) => { setMeses(m); load(m); };
 
-  if (loading) return <div className="loading">Cargando metricas...</div>;
+  const total    = parseInt(resumen?.total_llamadas)||0;
+  const cont     = parseInt(resumen?.contestadas)||0;
+  const noResp   = parseInt(resumen?.no_contestadas)||0;
+  const mins     = parseFloat(resumen?.total_minutos)||0;
+  const asr      = total>0?((cont/total)*100).toFixed(1):"—";
+  const acd      = cont>0?Math.round((mins/cont)*60):"—";
+  const ner      = total>0?(((cont+noResp)/total)*100).toFixed(1):"—";
 
   return (
     <div>
-      {/* HEADER */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
+      <div className="nv-page-header">
         <div>
-          <h1 style={{fontSize:20,fontWeight:700,color:'#0f172a',marginBottom:4}}>Metricas de trafico</h1>
-          <p style={{fontSize:13,color:'#94a3b8'}}>Analisis de llamadas y minutos por periodo</p>
+          <div className="nv-page-title">Métricas VoIP</div>
+          <div className="nv-page-sub">Análisis de tráfico y calidad de servicio</div>
         </div>
-        <div style={{display:'flex',gap:10,alignItems:'center'}}>
-          <span style={{fontSize:13,color:'#64748b'}}>Periodo:</span>
-          <select style={{padding:'7px 12px',border:'1px solid #e2e8f0',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none'}}
-            value={meses} onChange={e=>setMeses(parseInt(e.target.value))}>
-            <option value={1}>Ultimo mes</option>
-            <option value={3}>Ultimos 3 meses</option>
-            <option value={6}>Ultimos 6 meses</option>
-            <option value={12}>Ultimo año</option>
-          </select>
-          <button onClick={()=>load(meses)} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'#f8fafc',color:'#475569',fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Actualizar</button>
+        <div className="nv-page-actions">
+          {[1,3,6,12].map(m=>(
+            <button key={m}
+              className={"nv-btn nv-btn-sm "+(meses===m?"nv-btn-secondary":"nv-btn-ghost")}
+              onClick={()=>handleMeses(m)}>
+              {m===1?"1 mes":m===12?"12 meses":m+" meses"}
+            </button>
+          ))}
+          <button className="nv-btn nv-btn-secondary nv-btn-sm" onClick={()=>load()} disabled={loading}>
+            {loading?<span className="nv-spinner"/>:"↺"} Actualizar
+          </button>
         </div>
       </div>
 
-      {/* KPI CARDS */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:14,marginBottom:24}}>
-        {[
-          {label:'Total llamadas',val:resumen?.total_llamadas?.toLocaleString()||'0',bg:'#f1f5f9',color:'#475569'},
-          {label:'Salientes',val:resumen?.salientes?.toLocaleString()||'0',bg:'#eff6ff',color:'#1d4ed8'},
-          {label:'Entrantes',val:resumen?.entrantes?.toLocaleString()||'0',bg:'#f0fdf4',color:'#057a55'},
-          {label:'Onnet',val:resumen?.onnet?.toLocaleString()||'0',bg:'#faf5ff',color:'#7c3aed'},
-          {label:'Total minutos',val:fmt(resumen?.total_minutos),bg:'#fffbeb',color:'#b45309'},
-          {label:'Contestadas',val:resumen?.contestadas?.toLocaleString()||'0',bg:'#f0fdf4',color:'#057a55'},
-          {label:'No contest.',val:resumen?.no_contestadas?.toLocaleString()||'0',bg:'#fef2f2',color:'#c81e1e'},
-        ].map(({label,val,bg,color})=>(
-          <div key={label} style={{background:bg,borderRadius:10,padding:'14px 16px'}}>
-            <div style={{fontSize:11,color,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4}}>{label}</div>
-            <div style={{fontSize:22,fontWeight:700,color,fontFamily:'monospace'}}>{val}</div>
+      <div className="nv-kpi-grid">
+        <KpiCard label="Total llamadas"   value={loading?null:total.toLocaleString()} sub={meses+" meses"} color="var(--brand)"/>
+        <KpiCard label="Contestadas"      value={loading?null:cont.toLocaleString()}  sub={asr+"% ASR"}   color="var(--success)"/>
+        <KpiCard label="No contestadas"   value={loading?null:noResp.toLocaleString()} color="var(--danger)"/>
+        <KpiCard label="Minutos totales"  value={loading?null:Math.round(mins).toLocaleString()} sub={(mins/60).toFixed(1)+" horas"} color="var(--info)"/>
+        <KpiCard label="ASR"              value={loading?null:asr+"%"}   sub="Answer Seizure Ratio"  color={parseFloat(asr)>65?"var(--success)":"var(--warning)"}/>
+        <KpiCard label="ACD"              value={loading?null:(acd?acd+"s":"—")} sub="Avg Call Duration" color="var(--brand)"/>
+        <KpiCard label="NER"              value={loading?null:ner+"%"}   sub="Network Effectiveness"  color="var(--info)"/>
+        <KpiCard label="Salientes"        value={loading?null:(parseInt(resumen?.salientes)||0).toLocaleString()} color="var(--text-primary)"/>
+      </div>
+
+      {loading ? (
+        <div className="nv-loading" style={{ padding:"60px 0" }}><span className="nv-spinner"/><span>Cargando métricas...</span></div>
+      ) : (
+        <>
+          <SectionTitle>Tráfico por mes</SectionTitle>
+          <div className="nv-card" style={{ marginBottom:16 }}>
+            <div className="nv-card-header">
+              <span className="nv-card-title">◈ Minutos por mes</span>
+              <span style={{ fontSize:10, color:"var(--text-muted)" }}>Desglose por destino</span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={porMes} margin={{ top:4, right:8, left:0, bottom:0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+                <XAxis dataKey="mes" tick={{ fill:"#4a5568", fontSize:10 }} tickLine={false}/>
+                <YAxis tick={{ fill:"#4a5568", fontSize:10 }} tickLine={false} axisLine={false}/>
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill:"rgba(255,255,255,0.03)" }}/>
+                <Bar dataKey="min_loc"   name="Local"        stackId="a" fill="#1a8cff" radius={[0,0,0,0]}/>
+                <Bar dataKey="min_cel"   name="Celular"      stackId="a" fill="#f5a623"/>
+                <Bar dataKey="min_nac"   name="Nacional"     stackId="a" fill="#00c98d"/>
+                <Bar dataKey="min_onnet" name="On-net"       stackId="a" fill="#a29bfe" radius={[3,3,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        ))}
-      </div>
 
-      {/* GRAFICA TRAFICO POR MES */}
-      <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:20,marginBottom:20}}>
-        <div style={{fontWeight:700,fontSize:15,color:'#0f172a',marginBottom:4}}>Trafico acumulado en minutos</div>
-        <div style={{fontSize:12,color:'#94a3b8',marginBottom:16}}>Minutos por tipo de llamada · por mes</div>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={porMes} margin={{top:5,right:20,bottom:5,left:0}}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="mes" tick={{fontSize:11}} />
-            <YAxis tick={{fontSize:11}} />
-            <Tooltip formatter={(v)=>[parseFloat(v).toFixed(2)+' min']} />
-            <Legend />
-            <Bar dataKey="min_cel" name="Celular" fill={COLORS.CEL} radius={[3,3,0,0]} />
-            <Bar dataKey="min_loc" name="Local" fill={COLORS.LOC} radius={[3,3,0,0]} />
-            <Bar dataKey="min_nac" name="Nacional" fill={COLORS.NAC} radius={[3,3,0,0]} />
-            <Bar dataKey="min_onnet" name="Onnet" fill={COLORS.internal} radius={[3,3,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+          <div className="nv-card" style={{ marginBottom:16 }}>
+            <div className="nv-card-header">
+              <span className="nv-card-title">◈ Llamadas por mes</span>
+            </div>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={porMes} margin={{ top:4, right:8, left:0, bottom:0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+                <XAxis dataKey="mes" tick={{ fill:"#4a5568", fontSize:10 }} tickLine={false}/>
+                <YAxis tick={{ fill:"#4a5568", fontSize:10 }} tickLine={false} axisLine={false}/>
+                <Tooltip contentStyle={TOOLTIP_STYLE}/>
+                <Line type="monotone" dataKey="llamadas" name="Llamadas" stroke="#1a8cff" strokeWidth={2} dot={{ fill:"#1a8cff", r:3 }}/>
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
 
-      {/* FILA: PIE + TABLAS */}
-      <div style={{display:'grid',gridTemplateColumns:'300px 1fr 1fr',gap:16,marginBottom:20}}>
-
-        {/* PIE CONTEXTO */}
-        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:20}}>
-          <div style={{fontWeight:700,fontSize:14,color:'#0f172a',marginBottom:16}}>Minutos por contexto</div>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={porContexto} dataKey="minutos" nameKey="contexto" cx="50%" cy="50%" outerRadius={70} label={({contexto,percent})=>contexto+' '+Math.round(percent*100)+'%'} labelLine={false}>
-                {porContexto.map((e,i)=>(
-                  <Cell key={i} fill={COLORS[e.contexto]||['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444'][i%5]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v)=>[parseFloat(v).toFixed(2)+' min']} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div style={{marginTop:8}}>
-            {porContexto.map((c,i)=>(
-              <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #f1f5f9',fontSize:12}}>
-                <span style={{display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{width:8,height:8,borderRadius:'50%',background:COLORS[c.contexto]||'#94a3b8',display:'inline-block'}}/>
-                  {c.contexto}
-                </span>
-                <span style={{fontFamily:'monospace',fontWeight:600}}>{parseFloat(c.minutos).toFixed(2)} min</span>
+          <div className="nv-grid-2" style={{ marginBottom:16 }}>
+            <div className="nv-card">
+              <div className="nv-card-header">
+                <span className="nv-card-title">▤ Top 10 orígenes</span>
+                <span style={{ fontSize:10, color:"var(--text-muted)" }}>Por minutos</span>
               </div>
-            ))}
+              <div className="nv-table-wrap">
+                <table className="nv-table">
+                  <thead><tr><th>#</th><th>Número</th><th>Llamadas</th><th>Minutos</th></tr></thead>
+                  <tbody>
+                    {topOrigenes.map((r,i)=>(
+                      <tr key={r.numero}>
+                        <td style={{ color:"var(--text-muted)", fontSize:10 }}>{i+1}</td>
+                        <td className="mono">{r.numero}</td>
+                        <td style={{ color:"var(--info)" }}>{r.llamadas.toLocaleString()}</td>
+                        <td style={{ color:"var(--brand)", fontFamily:"var(--font-mono)", fontWeight:600 }}>{r.minutos.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {!topOrigenes.length&&<tr><td colSpan={4} style={{ textAlign:"center", color:"var(--text-muted)", padding:20 }}>Sin datos</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="nv-card">
+              <div className="nv-card-header">
+                <span className="nv-card-title">▤ Top 10 destinos</span>
+                <span style={{ fontSize:10, color:"var(--text-muted)" }}>Por minutos</span>
+              </div>
+              <div className="nv-table-wrap">
+                <table className="nv-table">
+                  <thead><tr><th>#</th><th>Número</th><th>Llamadas</th><th>Minutos</th></tr></thead>
+                  <tbody>
+                    {topDestinos.map((r,i)=>(
+                      <tr key={r.numero}>
+                        <td style={{ color:"var(--text-muted)", fontSize:10 }}>{i+1}</td>
+                        <td className="mono">{r.numero}</td>
+                        <td style={{ color:"var(--info)" }}>{r.llamadas.toLocaleString()}</td>
+                        <td style={{ color:"var(--brand)", fontFamily:"var(--font-mono)", fontWeight:600 }}>{r.minutos.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {!topDestinos.length&&<tr><td colSpan={4} style={{ textAlign:"center", color:"var(--text-muted)", padding:20 }}>Sin datos</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* TOP ORIGENES */}
-        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:20}}>
-          <div style={{fontWeight:700,fontSize:14,color:'#0f172a',marginBottom:12}}>Top numeros salientes</div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-            <thead>
-              <tr>
-                <th style={{textAlign:'left',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>#</th>
-                <th style={{textAlign:'left',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>Origen</th>
-                <th style={{textAlign:'right',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>Llamadas</th>
-                <th style={{textAlign:'right',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>Minutos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topOrigenes.map((r,i)=>(
-                <tr key={i} style={{borderBottom:'1px solid #f8fafc'}}>
-                  <td style={{padding:'7px 8px',color:'#94a3b8'}}>{i+1}</td>
-                  <td style={{padding:'7px 8px',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{r.numero}</td>
-                  <td style={{padding:'7px 8px',textAlign:'right'}}>{r.llamadas?.toLocaleString()}</td>
-                  <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'monospace',color:'#1d4ed8'}}>{parseFloat(r.minutos).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          <div className="nv-grid-2">
+            <div className="nv-card">
+              <div className="nv-card-header">
+                <span className="nv-card-title">○ Distribución por contexto</span>
+              </div>
+              {porContexto.length>0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={porContexto} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({name,percent})=>name+" "+((percent||0)*100).toFixed(0)+"%"} labelLine={false} fontSize={10}>
+                      {porContexto.map((_,i)=>(
+                        <Cell key={i} fill={BAR_COLORS[i%BAR_COLORS.length]}/>
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v,n)=>[v+" min",n]}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <div style={{ textAlign:"center", padding:"40px 0", color:"var(--text-muted)", fontSize:12 }}>Sin datos</div>}
+            </div>
 
-        {/* TOP DESTINOS */}
-        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:20}}>
-          <div style={{fontWeight:700,fontSize:14,color:'#0f172a',marginBottom:12}}>Top numeros entrantes</div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-            <thead>
-              <tr>
-                <th style={{textAlign:'left',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>#</th>
-                <th style={{textAlign:'left',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>Destino</th>
-                <th style={{textAlign:'right',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>Llamadas</th>
-                <th style={{textAlign:'right',padding:'6px 8px',borderBottom:'1px solid #e2e8f0',color:'#94a3b8',fontWeight:600,textTransform:'uppercase',fontSize:10,letterSpacing:'0.5px'}}>Minutos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topDestinos.map((r,i)=>(
-                <tr key={i} style={{borderBottom:'1px solid #f8fafc'}}>
-                  <td style={{padding:'7px 8px',color:'#94a3b8'}}>{i+1}</td>
-                  <td style={{padding:'7px 8px',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{r.numero}</td>
-                  <td style={{padding:'7px 8px',textAlign:'right'}}>{r.llamadas?.toLocaleString()}</td>
-                  <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'monospace',color:'#057a55'}}>{parseFloat(r.minutos).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            <div className="nv-card">
+              <div className="nv-card-header">
+                <span className="nv-card-title">◈ Resumen de calidad</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {[
+                  { lbl:"ASR (Answer Seizure Ratio)", val:asr+"%",  target:">65%",  ok:parseFloat(asr)>65 },
+                  { lbl:"ACD (Avg Call Duration)",    val:acd?""+acd+"s":"—",  target:">30s", ok:parseInt(acd)>30 },
+                  { lbl:"NER (Network Effectiveness)",val:ner+"%",  target:">90%",  ok:parseFloat(ner)>90 },
+                  { lbl:"Llamadas contestadas",        val:cont.toLocaleString(), target:"",   ok:true },
+                  { lbl:"Minutos on-net",              val:porMes.reduce((s,m)=>s+(m.min_onnet||0),0).toLocaleString()+" min", target:"", ok:true },
+                ].map(({lbl,val,target,ok})=>(
+                  <div key={lbl} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", background:"var(--bg-raised)", borderRadius:"var(--r-sm)" }}>
+                    <div style={{ width:7, height:7, borderRadius:"50%", background:ok?"var(--success)":"var(--warning)", flexShrink:0 }}/>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:11, color:"var(--text-secondary)" }}>{lbl}</div>
+                      {target&&<div style={{ fontSize:9, color:"var(--text-muted)" }}>Objetivo: {target}</div>}
+                    </div>
+                    <div style={{ fontFamily:"var(--font-mono)", fontSize:13, fontWeight:700, color:ok?"var(--success)":"var(--warning)" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
