@@ -27,6 +27,7 @@ import NetworkMap from './components/NetworkMap';
 import AuditLog from './components/AuditLog';
 import Softphone from './components/Softphone';
 import Usuarios from './components/Usuarios';
+import Antifraude from './components/Antifraude';
 
 function Layout({ children }) {
   return (
@@ -76,6 +77,7 @@ export default function App() {
                   <Route path="/auditoria"     element={<AuditLog />} />
                   <Route path="/softphone"     element={<Softphone />} />
                   <Route path="/usuarios"      element={<Usuarios />} />
+                  <Route path="/antifraude"    element={<Antifraude />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

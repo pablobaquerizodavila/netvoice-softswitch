@@ -1093,3 +1093,75 @@ def noc_network():
         }
     except Exception as e:
         return {"status":"error","error":str(e)}
+
+# ─── ANTIFRAUDE ───────────────────────────────────────────────
+from sqlalchemy import text as _text2
+
+@app.get("/fraud/blacklist")
+def get_blacklist(db: Session = Depends(get_db)):
+    r = db.execute(_text2("SELECT * FROM fraud_blacklist ORDER BY created_at DESC"))
+    return {"data": [dict(x._mapping) for x in r.fetchall()]}
+
+@app.post("/fraud/blacklist")
+def add_blacklist(data: dict, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_text2("INSERT IGNORE INTO fraud_blacklist (tipo,valor,motivo,created_by) VALUES (:tipo,:valor,:motivo,:by)"),
+        {"tipo":data.get("tipo","numero"),"valor":data["valor"],"motivo":data.get("motivo",""),"by":u.username})
+    db.commit()
+    return {"status":"ok"}
+
+@app.delete("/fraud/blacklist/{id}")
+def del_blacklist(id: int, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_text2("UPDATE fraud_blacklist SET activo='no' WHERE id=:id"),{"id":id})
+    db.commit()
+    return {"status":"ok"}
+
+@app.get("/fraud/whitelist")
+def get_whitelist(db: Session = Depends(get_db)):
+    r = db.execute(_text2("SELECT * FROM fraud_whitelist ORDER BY created_at DESC"))
+    return {"data": [dict(x._mapping) for x in r.fetchall()]}
+
+@app.post("/fraud/whitelist")
+def add_whitelist(data: dict, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_text2("INSERT IGNORE INTO fraud_whitelist (tipo,valor,motivo) VALUES (:tipo,:valor,:motivo)"),
+        {"tipo":data.get("tipo","numero"),"valor":data["valor"],"motivo":data.get("motivo","")})
+    db.commit()
+    return {"status":"ok"}
+
+@app.delete("/fraud/whitelist/{id}")
+def del_whitelist(id: int, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_text2("UPDATE fraud_whitelist SET activo='no' WHERE id=:id"),{"id":id})
+    db.commit()
+    return {"status":"ok"}
+
+@app.get("/fraud/alerts")
+def get_alerts(db: Session = Depends(get_db)):
+    r = db.execute(_text2("SELECT * FROM fraud_alerts ORDER BY created_at DESC LIMIT 100"))
+    return {"data": [dict(x._mapping) for x in r.fetchall()]}
+
+@app.put("/fraud/alerts/{id}/revisar")
+def revisar_alert(id: int, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_text2("UPDATE fraud_alerts SET revisado='yes' WHERE id=:id"),{"id":id})
+    db.commit()
+    return {"status":"ok"}
+
+@app.get("/fraud/stats")
+def fraud_stats(db: Session = Depends(get_db)):
+    bl  = db.execute(_text2("SELECT COUNT(*) FROM fraud_blacklist WHERE activo='yes'")).scalar() or 0
+    wl  = db.execute(_text2("SELECT COUNT(*) FROM fraud_whitelist WHERE activo='yes'")).scalar() or 0
+    al  = db.execute(_text2("SELECT COUNT(*) FROM fraud_alerts WHERE revisado='no'")).scalar() or 0
+    crit= db.execute(_text2("SELECT COUNT(*) FROM fraud_alerts WHERE nivel='critical' AND revisado='no'")).scalar() or 0
+    # Numeros con alto consumo en las ultimas 24h (posible fraude)
+    suspicious = db.execute(_text2("""
+        SELECT src, COUNT(*) as llamadas, ROUND(SUM(billsec)/60,1) as minutos
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        GROUP BY src HAVING llamadas > 20 OR minutos > 60
+        ORDER BY minutos DESC LIMIT 10
+    """)).fetchall()
+    return {
+        "blacklist_count": bl,
+        "whitelist_count": wl,
+        "alerts_pending":  al,
+        "alerts_critical": crit,
+        "suspicious": [dict(x._mapping) for x in suspicious],
+    }
