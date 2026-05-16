@@ -4,17 +4,17 @@ import JsSIP from 'jssip';
 // Agregar en public/index.html:
 // <script src="https://cdnjs.cloudflare.com/ajax/libs/jssip/3.10.0/jssip.min.js"></script>
 
-const WS_SERVER = 'wss://' + window.location.hostname + ':8443/ws-asterisk/';
+const WS_SERVER = 'wss://' + window.location.hostname + ':8089/ws';
 const SIP_DOMAIN = '192.168.0.161';
 
 const statusColors = {
-  disconnected: 'var(--text-muted)',
-  connecting:   'var(--amber)',
-  registered:   'var(--accent)',
-  calling:       'var(--blue)',
-  incoming:     'var(--amber)',
-  active:        'var(--green)',
-  error:         'var(--red)',
+  disconnected: "var(--text-muted)",
+  connecting:   "var(--warning)",
+  registered:   "var(--success)",
+  calling:       "var(--brand)",
+  incoming:     "var(--warning)",
+  active:        "var(--success)",
+  error:         "var(--danger)",
 };
 
 const statusLabels = {
@@ -66,7 +66,7 @@ export default function Softphone() {
       password:           pwd,
       register:           true,
       register_expires:   300,
-      contact_uri:        `sip:${ext}@192.168.0.161;transport=ws`,
+      contact_uri:        `sip:${ext}@${window.location.hostname};transport=ws`,
       user_agent:         'Netvoice Softphone',
     });
 
@@ -203,8 +203,8 @@ export default function Softphone() {
           </div>
           {registered && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Ext. {ext}</span>
-              <button onClick={disconnect} style={{ background: 'var(--red-dim)', border: 'none', color: 'var(--red)', fontSize: 10, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: 'var(--font-mono)' }}>Ext. {ext}</span>
+              <button onClick={disconnect} style={{ background: 'var(--red-dim)', border: 'none', color: "var(--danger)", fontSize: 10, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--font)' }}>
                 Desconectar
               </button>
             </div>
@@ -214,9 +214,9 @@ export default function Softphone() {
         {/* Login form */}
         {showLogin && (
           <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Ingresa tus credenciales SIP</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Ingresa tus credenciales SIP</div>
             <div>
-              <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Extensión</label>
+              <label style={{ fontSize: 10, color: "var(--text-muted)", textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Extensión</label>
               <input
                 style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-mid)', borderRadius: 7, fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }}
                 placeholder="1001" value={ext} onChange={e => setExt(e.target.value)}
@@ -224,7 +224,7 @@ export default function Softphone() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Password SIP</label>
+              <label style={{ fontSize: 10, color: "var(--text-muted)", textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Password SIP</label>
               <input
                 style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-mid)', borderRadius: 7, fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }}
                 type="password" placeholder="••••••••" value={pwd} onChange={e => setPwd(e.target.value)}
@@ -232,10 +232,10 @@ export default function Softphone() {
               />
             </div>
             {status === 'error' && (
-              <div style={{ fontSize: 11, color: 'var(--red)', background: 'var(--red-dim)', padding: '6px 10px', borderRadius: 6 }}>{callInfo || 'Error de conexión'}</div>
+              <div style={{ fontSize: 11, color: "var(--danger)", background: 'var(--red-dim)', padding: '6px 10px', borderRadius: 6 }}>{callInfo || 'Error de conexión'}</div>
             )}
             <button onClick={connect} disabled={status === 'connecting'}
-              style={{ padding: '9px', background: 'var(--accent)', border: 'none', borderRadius: 7, color: '#0D1117', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)', opacity: status === 'connecting' ? 0.7 : 1 }}>
+              style={{ padding: '9px', background: "var(--success)", border: 'none', borderRadius: 7, color: '#0D1117', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)', opacity: status === 'connecting' ? 0.7 : 1 }}>
               {status === 'connecting' ? 'Conectando...' : 'Conectar'}
             </button>
           </div>
@@ -249,21 +249,21 @@ export default function Softphone() {
             <div style={{ minHeight: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
               {isInCall && (
                 <>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>{callInfo}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{callInfo}</div>
                   {status === 'active' && (
-                    <div style={{ fontSize: 22, fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{fmtDuration(callDuration)}</div>
+                    <div style={{ fontSize: 22, fontWeight: 600, fontFamily: 'var(--font-mono)', color: "var(--success)" }}>{fmtDuration(callDuration)}</div>
                   )}
                 </>
               )}
               {isRinging && (
-                <div style={{ fontSize: 13, color: 'var(--amber)', fontWeight: 500 }}>{callInfo}</div>
+                <div style={{ fontSize: 13, color: "var(--warning)", fontWeight: 500 }}>{callInfo}</div>
               )}
               {!isInCall && !isRinging && (
                 <div style={{ width: '100%', display: 'flex', alignItems: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border-mid)', borderRadius: 8, padding: '8px 12px', gap: 8 }}>
-                  <span style={{ fontSize: 18, fontFamily: 'var(--font-mono)', color: 'var(--text)', flex: 1, letterSpacing: 2 }}>{dialpad || <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Marcar número...</span>}</span>
+                  <span style={{ fontSize: 18, fontFamily: 'var(--font-mono)', color: 'var(--text)', flex: 1, letterSpacing: 2 }}>{dialpad || <span style={{ color: "var(--text-muted)", fontSize: 13 }}>Marcar número...</span>}</span>
                   {dialpad && (
                     <button onClick={() => setDialpad(d => d.slice(0, -1))}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, padding: 4 }}>⌫</button>
+                      style={{ background: 'none', border: 'none', color: "var(--text-muted)", cursor: 'pointer', fontSize: 16, padding: 4 }}>⌫</button>
                   )}
                 </div>
               )}
@@ -288,11 +288,11 @@ export default function Softphone() {
               {isRinging && (
                 <>
                   <button onClick={answer}
-                    style={{ flex: 1, padding: '12px 0', background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 10, color: 'var(--green)', fontSize: 22, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '12px 0', background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 10, color: "var(--success)", fontSize: 22, cursor: 'pointer' }}>
                     📞
                   </button>
                   <button onClick={hangup}
-                    style={{ flex: 1, padding: '12px 0', background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 10, color: 'var(--red)', fontSize: 22, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '12px 0', background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 10, color: "var(--danger)", fontSize: 22, cursor: 'pointer' }}>
                     📵
                   </button>
                 </>
@@ -302,11 +302,11 @@ export default function Softphone() {
               {isInCall && (
                 <>
                   <button onClick={toggleMute}
-                    style={{ flex: 1, padding: '12px 0', background: muted ? 'var(--red-dim)' : 'var(--bg-surface)', border: `1px solid ${muted ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, color: muted ? 'var(--red)' : 'var(--text-sec)', fontSize: 18, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '12px 0', background: muted ? 'var(--red-dim)' : 'var(--bg-surface)', border: `1px solid ${muted ? "var(--danger)" : 'var(--border)'}`, borderRadius: 10, color: muted ? "var(--danger)" : 'var(--text-sec)', fontSize: 18, cursor: 'pointer' }}>
                     {muted ? '🔇' : '🎤'}
                   </button>
                   <button onClick={hangup}
-                    style={{ flex: 2, padding: '12px 0', background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 10, color: 'var(--red)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+                    style={{ flex: 2, padding: '12px 0', background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 10, color: "var(--danger)", fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
                     Colgar
                   </button>
                 </>
@@ -315,7 +315,7 @@ export default function Softphone() {
               {/* Marcar */}
               {!isInCall && !isRinging && (
                 <button onClick={call} disabled={!dialpad}
-                  style={{ flex: 1, padding: '13px 0', background: dialpad ? 'var(--accent)' : 'var(--bg-surface)', border: `1px solid ${dialpad ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 10, color: dialpad ? '#0D1117' : 'var(--text-muted)', fontSize: 22, cursor: dialpad ? 'pointer' : 'default', transition: 'all 0.15s' }}>
+                  style={{ flex: 1, padding: '13px 0', background: dialpad ? "var(--success)" : 'var(--bg-surface)', border: `1px solid ${dialpad ? "var(--success)" : 'var(--border)'}`, borderRadius: 10, color: dialpad ? '#0D1117' : "var(--text-muted)", fontSize: 22, cursor: dialpad ? 'pointer' : 'default', transition: 'all 0.15s' }}>
                   📞
                 </button>
               )}
