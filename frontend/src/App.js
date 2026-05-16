@@ -31,6 +31,7 @@ import Antifraude from './components/Antifraude';
 import APICenter from './components/APICenter';
 import Revendedores from './components/Revendedores';
 import Billing from './components/Billing';
+import MobileApp from './components/MobileApp';
 
 function Layout({ children }) {
   return (
@@ -84,6 +85,7 @@ export default function App() {
                   <Route path="/api"          element={<APICenter />} />
                   <Route path="/revendedores"  element={<Revendedores />} />
                   <Route path="/billing"       element={<Billing />} />
+                  <Route path="/app"          element={<MobileApp />} />
                 </Routes>
               </Layout>
             </PrivateRoute>
