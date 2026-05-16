@@ -536,9 +536,12 @@ def update_trunk(trunk_id: int, t: TrunkUpdate, db: Session = Depends(get_db), c
 
 @app.delete("/trunks/{trunk_id}")
 def delete_trunk(trunk_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db.execute(text("UPDATE trunks SET activo='no' WHERE id = :id"), {"id": trunk_id})
+    trunk = db.execute(text("SELECT id, nombre FROM trunks WHERE id = :id"), {"id": trunk_id}).fetchone()
+    if not trunk:
+        raise HTTPException(status_code=404, detail="Trunk no encontrado")
+    db.execute(text("DELETE FROM trunks WHERE id = :id"), {"id": trunk_id})
     db.commit()
-    return {"status": "ok", "message": "Trunk desactivado"}
+    return {"status": "ok", "message": "Trunk eliminado"}
 
 # ─── PLANES ───────────────────────────────────────────
 class PlanCreate(BaseModel):
@@ -1562,3 +1565,76 @@ def cdr_report_pdf(meses: int=1, db: Session = Depends(get_db)):
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=cdr-report-{meses}m.pdf"}
     )
+
+# ─── CDR WEBSOCKET TIEMPO REAL ────────────────────────────────
+from fastapi import WebSocket, WebSocketDisconnect
+import asyncio as _asyncio
+import json as _json
+
+class CDRManager:
+    def __init__(self):
+        self.connections: list = []
+        self.last_cdr_id = None
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.connections.append(ws)
+
+    def disconnect(self, ws: WebSocket):
+        if ws in self.connections:
+            self.connections.remove(ws)
+
+    async def broadcast(self, data: dict):
+        dead = []
+        for ws in self.connections:
+            try:
+                await ws.send_text(_json.dumps(data, default=str))
+            except:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+cdr_manager = CDRManager()
+
+@app.websocket("/ws/cdr")
+async def websocket_cdr(websocket: WebSocket, db: Session = Depends(get_db)):
+    await cdr_manager.connect(websocket)
+    try:
+        # Enviar los ultimos 10 CDRs al conectar
+        from sqlalchemy import text as _wst
+        rows = db.execute(_wst("""
+            SELECT src, dst, dcontext, duration, billsec, disposition,
+                   DATE_FORMAT(calldate, "%Y-%m-%d %H:%i:%S") as calldate,
+                   uniqueid
+            FROM cdr ORDER BY calldate DESC LIMIT 10
+        """)).fetchall()
+        await websocket.send_text(_json.dumps({
+            "type": "history",
+            "data": [dict(r._mapping) for r in rows]
+        }, default=str))
+
+        # Polling cada 3 segundos para nuevos CDRs
+        last_id = rows[0].uniqueid if rows else ""
+        while True:
+            await _asyncio.sleep(3)
+            try:
+                new_rows = db.execute(_wst("""
+                    SELECT src, dst, dcontext, duration, billsec, disposition,
+                           DATE_FORMAT(calldate, "%Y-%m-%d %H:%i:%S") as calldate,
+                           uniqueid
+                    FROM cdr
+                    WHERE uniqueid > :last_id
+                    ORDER BY calldate DESC LIMIT 5
+                """), {"last_id": last_id}).fetchall()
+                if new_rows:
+                    last_id = new_rows[0].uniqueid
+                    await websocket.send_text(_json.dumps({
+                        "type": "new_cdrs",
+                        "data": [dict(r._mapping) for r in new_rows]
+                    }, default=str))
+            except Exception as e:
+                pass
+    except WebSocketDisconnect:
+        cdr_manager.disconnect(websocket)
+    except Exception:
+        cdr_manager.disconnect(websocket)
