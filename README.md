@@ -1,133 +1,116 @@
 # Netvoice Softswitch — Linkotel
 
-Plataforma de telefonía IP carrier-grade con onboarding self-service, gestión multicanal de clientes, activación técnica automática y API para partners.
-
----
+**Plataforma VoIP carrier-class** construida sobre Asterisk 20 + Kamailio 5.5 con panel de administracion React/FastAPI.
 
 ## Infraestructura
 
-| Componente | IP | Descripción |
-|---|---|---|
-| NAS Synology DS1821+ | — | Hypervisor VMware, host de VMs |
-| voip-lab-01 | 192.168.0.161 | Asterisk 20.19.0 + MySQL 8.0 |
-| voip-panel-01 | 192.168.0.7 | FastAPI + React + Nginx |
-| Kamailio SBC | 192.168.0.10 | Session Border Controller v5.5.4 |
-| voip-ha-01 | 192.168.0.216 | Asterisk HA Node v20.19.0 |
+| VM | IP | Rol | Stack |
+|----|-----|-----|-------|
+| voip-sbc-01 | 192.168.0.10 | Kamailio SBC | UDP/TCP :5060, TLS :5061 |
+| voip-lab-01 | 192.168.0.161 | Asterisk PBX + MySQL | Asterisk 20.19.0, MySQL 8.0 |
+| voip-panel-01 | 192.168.0.7 | Panel Web | FastAPI :8000, React, Nginx HTTPS |
+| voip-ha-01 | 192.168.0.216 | Asterisk HA | Sync cada 5min, health check cada 1min |
+| voip-monitor-01 | 192.168.0.170 | Monitoreo | Grafana 13 :3000, Prometheus 2.51 :9090 |
+| voip-media-01 | 192.168.0.18 | Media Server | Asterisk 20.19.0, ConfBridge, MixMonitor |
+| NAS DS1621+ | 192.168.0.116 | Backup | Synology VMM, 7TB, backups diarios |
 
----
+## URLs
 
-## URLs del sistema
+| Servicio | URL |
+|----------|-----|
+| Panel Admin | https://panel.eneural.org |
+| App Movil (PWA) | https://panel.eneural.org/app |
+| Grafana | http://192.168.0.170:3000 |
+| Prometheus | http://192.168.0.170:9090 |
+| API Docs | https://panel.eneural.org/docs |
 
-| Portal | URL |
-|--------|-----|
-| Panel admin / SAC | https://panel.eneural.org/login |
-| Portal cliente | https://panel.eneural.org/registro |
-| Agente SAC | https://panel.eneural.org/sac/login |
-| API docs | https://panel.eneural.org/docs |
-| API v1 | https://panel.eneural.org/v1/ |
-| ARI Asterisk | http://192.168.0.161:8088/ari |
+## Stack Tecnologico
 
----
+**Frontend:** React 18, React Router, Recharts, JsSIP (WebRTC), CSS variables design system
 
-## Credenciales del sistema
+**Backend:** FastAPI, SQLAlchemy, PyMySQL, reportlab, WebSockets
 
-| Usuario | Email | Password | Rol |
-|---------|-------|----------|-----|
-| Admin | admin@netvoice.ec | Admin1234! | admin |
-| Agente SAC | sac@netvoice.ec | Sac2024# | agent |
+**Infraestructura:** Asterisk 20 PJSIP, Kamailio 5.5, MySQL 8.0, Nginx, Let's Encrypt
 
----
+**Monitoreo:** Prometheus + Node Exporter + Grafana 13, alertas CPU/RAM/Disco
 
-## Stack técnico
+## Modulos del Panel
 
-- **Frontend:** React 19 + CRA + react-router-dom v7
-- **Build:** `cd frontend && npm run build` → `frontend/build/`
-- **Backend:** FastAPI (puerto 8000) + SQLAlchemy + MySQL 8.0
-- **Web:** Nginx HTTPS → `frontend/build/` (fuente única repo Git)
-- **Asterisk:** 20.19.0 PJSIP + CDR via cdr_adaptive_odbc
-- **Design system:** Sora + JetBrains Mono, dark mode carrier-class
+| Modulo | Ruta | Descripcion |
+|--------|------|-------------|
+| Dashboard | /dashboard | KPIs VoIP, ASR/ACD, CDR live |
+| CDR Llamadas | /cdr | Historial con filtros avanzados |
+| CDR Live | /cdr-live | WebSocket tiempo real |
+| Extensiones | /extensions | CRUD extensiones SIP PJSIP |
+| Metricas | /metricas | Graficos Recharts ASR/ACD/NER |
+| Network Map | /network | NOC, estado nodos, CPU/RAM |
+| Carriers | /carriers | Trunks SIP carrier-class |
+| Clientes | /clientes-v2 | 7 tabs con contratos/pagos/DIDs |
+| Planes | /planes | Planes de cobro con tarifas |
+| Series DID | /dids | Numeracion ARCOTEL |
+| Antifraude | /antifraude | Blacklist/whitelist/alertas |
+| API Center | /api | Partners y API keys |
+| Revendedores | /revendedores | Portal white label |
+| Billing | /billing | Facturacion automatica IVA 12% |
+| Softphone | /softphone | WebRTC JsSIP integrado |
+| App Movil | /app | PWA Dashboard+CDR+NOC |
+| Usuarios | /usuarios | 10 roles, permisos granulares |
+| Auditoria | /auditoria | Log completo de acciones |
+| Ajustes | /settings | SMTP, password, sistema |
 
----
-
-## Flujo de trabajo
+## Backups
 
 ```bash
-# 1. Editar código
-~/netvoice-softswitch/frontend/src/
+# Backup manual completo (codigo + BD + git push)
+python3 ~/netvoice_backup.py
 
-# 2. Build y deploy
+# Sync al NAS DS1621+
+~/netvoice_nas_backup.sh
+
+# Cron automatico
+# 02:00 — backup local
+# 03:00 — sync NAS
+```
+
+## Restore
+
+```bash
+tar -xzf netvoice_YYYYMMDD_HHMMSS.tar.gz -C ~/backups/
+mysql -u netvoice -pNetvoice2024# asterisk < asterisk_YYYYMMDD.sql
+mysql -u netvoice -pNetvoice2024# netvoice  < netvoice_YYYYMMDD.sql
 cd ~/netvoice-softswitch/frontend && npm run build
-
-# 3. Cierre de hito — backup completo
-cd ~/netvoice-softswitch
-git add . && git commit -m "feat: descripción" && git push
-python3 ~/netvoice_backup.py
+sudo systemctl restart netvoice-panel.service
 ```
 
----
-
-## Roadmap — estado actual
-
-### ✅ Fase 1 — Fundación Carrier-Class (en progreso)
-
-| Hito | Descripción | Estado |
-|------|-------------|--------|
-| 1 | Shell carrier-class: design system dark, Sidebar pro, layout | ✅ Completado |
-| 2 | Dashboard VoIP: KPIs reales ASR/ACD, sparkline, CDR live | ✅ Completado |
-| 3 | Upgrade Clientes: tabs SAC/Admin/Partner, historial, docs | ✅ Completado |
-| 4 | Upgrade Extensiones SIP: codecs, registro, CRUD carrier | ✅ Completado |
-| 5 | DID Management: rangos ARCOTEL, asignacion, KPIs | ✅ Completado |
-| 6 | Usuarios y Roles: 10 perfiles, permisos por modulo | ✅ Completado |
-
-### 🔄 Fase 2 — Motor Comercial y Operativo
-
-| Hito | Descripción | Estado |
-|------|-------------|--------|
-| 7  | LCR/Routing: rutas, failover, simulador | ⏳ Fase 2 |
-| 8  | Tarifas: rate decks, márgenes, simulador rentabilidad | ⏳ Fase 2 |
-| 9  | CDRs completo: filtros avanzados, análisis SIP codes | ⏳ Fase 2 |
-| 10 | Billing: prepago/postpago, facturas, corte automático | ⏳ Fase 2 |
-| 11 | Carriers/Proveedores: evaluación calidad, ASR por carrier | ⏳ Fase 2 |
-| 12 | Portal Cliente self-service | ⏳ Fase 2 |
-| 13 | Provisionamiento rápido: wizard, checklist | ⏳ Fase 2 |
-| 14 | Tickets y soporte: SLA, historial, agentes | ⏳ Fase 2 |
-| 15 | SMTP real para OTP | ⏳ Fase 2 |
-| 16 | Pasarela de pago real: PayPhone / Stripe | ⏳ Fase 2 |
-
-### ⏳ Fase 3 — NOC, Seguridad y Revendedores
-
-| Hito | Descripción | Estado |
-|------|-------------|--------|
-| 17 | NOC Dashboard: latencia, jitter, alarmas 24/7 | ⏳ Fase 3 |
-| 18 | Antifraude: detección anomalías, bloqueo automático | ⏳ Fase 3 |
-| 19 | Portal Revendedor White Label | ⏳ Fase 3 |
-| 20 | Auditoría: logs acceso, cambios config | ⏳ Fase 3 |
-| 21 | Configuración general: SMTP, branding, multiempresa | ⏳ Fase 3 |
-| 22 | API Center: tokens, documentación, logs de uso | ⏳ Fase 3 |
-
-### ⏳ Fase 4 — Escala Carrier
-
-| Hito | Descripción | Estado |
-|------|-------------|--------|
-| 23 | Media Server: FreeSWITCH o Janus en VM separada | ⏳ Fase 4 |
-| 24 | App móvil/desktop: React Native o Electron | ⏳ Fase 4 |
-| 25 | HA completo: failover automático Asterisk | ⏳ Fase 4 |
-
----
-
-## VMs adicionales planificadas
-
-| VM | IP tentativa | Propósito | Fase |
-|----|-------------|-----------|------|
-| voip-monitor-01 | 192.168.0.50 | Grafana + Prometheus | Fase 3 |
-| voip-media-01 | 192.168.0.60 | FreeSWITCH / Janus | Fase 4 |
-
----
-
-## Backup
+## Desarrollo
 
 ```bash
-python3 ~/netvoice_backup.py
+# Editar frontend
+cd ~/netvoice-softswitch/frontend/src/components/
+
+# Build y deploy
+cd ~/netvoice-softswitch/frontend && npm run build
+sudo nginx -s reload
+
+# Editar backend
+nano ~/netvoice-panel/app/main.py
+sudo systemctl restart netvoice-panel.service
 ```
 
-Incluye: código fuente, build React, dump asterisk, dump netvoice, git push, compresión, rotación 10 backups.
+## Seguridad
+
+- HTTPS con Let's Encrypt (auto-renovacion certbot)
+- Headers: HSTS, X-Frame-Options, CSP, nosniff
+- UFW activo en todos los nodos
+- SIP TLS :5061 en Kamailio
+- WSS :8089 en Asterisk para WebRTC
+- JWT autenticacion en API
+- IPs LAN-only para servicios internos
+
+## Repositorio
+
+https://github.com/pablobaquerizodavila/netvoice-softswitch
+
+---
+
+**Linkotel S.A.** | Guayaquil, Ecuador | 2026
