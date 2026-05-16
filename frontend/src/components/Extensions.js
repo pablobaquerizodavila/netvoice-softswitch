@@ -19,6 +19,7 @@ function Alert({ msg, onClose }) {
 
 function ExtModal({ ext, onClose, onSave }) {
   const isEdit = !!ext?.id;
+  const [showExtPwd, setShowExtPwd] = useState(false);
   const [form, setForm] = useState({
     id:       ext?.id       || '',
     password: '',
@@ -74,9 +75,12 @@ function ExtModal({ ext, onClose, onSave }) {
           </div>
           <div className="nv-form-field">
             <label className="nv-label">{isEdit ? 'Nueva contraseña (opcional)' : 'Contraseña SIP'}</label>
-            <input className="nv-input" type="password" value={form.password}
+            <div style={{ position:"relative",display:"flex",alignItems:"center" }}>
+              <input className="nv-input" type={showExtPwd?"text":"password"} value={form.password}
               onChange={e => set('password', e.target.value)}
               placeholder={isEdit ? 'Dejar vacío para no cambiar' : 'Contraseña segura'} />
+              <button type="button" style={{ position:"absolute",right:10,background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)",display:"flex",alignItems:"center",padding:0 }} onClick={()=>setShowExtPwd(v=>!v)}><EyeIcon show={showExtPwd}/></button>
+            </div>
           </div>
         </div>
 
@@ -187,6 +191,22 @@ function ExtCard({ ext, registered, onEdit, onDelete }) {
         </button>
       </div>
     </div>
+  );
+}
+
+
+function EyeIcon({ show }) {
+  return show ? (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
   );
 }
 

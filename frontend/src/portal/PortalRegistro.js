@@ -1,7 +1,24 @@
 import { useState } from 'react';
 import apiv1 from '../api_v1';
 
+
+function EyeIcon({ show }) {
+  return show ? (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+}
+
 export default function PortalRegistro() {
+  const [showRegPwd, setShowRegPwd] = useState(false);
   const [form, setForm] = useState({ name:'', ruc:'', email:'', password:'', phone:'' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +64,10 @@ export default function PortalRegistro() {
           <input style={styles.input} name="ruc" placeholder="RUC / Cédula" value={form.ruc} onChange={handleChange} />
           <input style={styles.input} name="email" type="email" placeholder="Email *" value={form.email} onChange={handleChange} required />
           <input style={styles.input} name="phone" placeholder="Teléfono de contacto" value={form.phone} onChange={handleChange} />
-          <input style={styles.input} name="password" type="password" placeholder="Contraseña (mín. 8 caracteres) *" value={form.password} onChange={handleChange} required />
+          <div style={{ position:"relative", display:"flex", alignItems:"center" }}>
+          <input style={{...styles.input, paddingRight:36}} name="password" type={showRegPwd?"text":"password"} placeholder="Contraseña (mín. 8 caracteres) *" value={form.password} onChange={handleChange} required />
+          <button type="button" style={{ position:"absolute", right:10, background:"none", border:"none", cursor:"pointer", color:"#666", display:"flex", alignItems:"center", padding:0 }} onClick={()=>setShowRegPwd(v=>!v)}><EyeIcon show={showRegPwd}/></button>
+        </div>
           <button style={{...styles.btn, opacity: loading ? 0.7 : 1}} type="submit" disabled={loading}>
             {loading ? 'Creando cuenta...' : 'Crear cuenta →'}
           </button>

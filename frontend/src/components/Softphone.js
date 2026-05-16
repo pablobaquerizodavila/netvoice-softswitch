@@ -27,6 +27,22 @@ const statusLabels = {
   error:        'Error de conexión',
 };
 
+
+function EyeIcon({ show }) {
+  return show ? (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+}
+
 export default function Softphone() {
   const [ext, setExt]           = useState('');
   const [pwd, setPwd]           = useState('');
@@ -34,6 +50,7 @@ export default function Softphone() {
   const [dialpad, setDialpad]   = useState('');
   const [callInfo, setCallInfo] = useState('');
   const [muted, setMuted]       = useState(false);
+  const [showSipPwd, setShowSipPwd] = useState(false);
   const [registered, setRegistered] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [showLogin, setShowLogin] = useState(true);
@@ -225,11 +242,14 @@ export default function Softphone() {
             </div>
             <div>
               <label style={{ fontSize: 10, color: "var(--text-muted)", textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Password SIP</label>
-              <input
+              <div style={{ position:"relative",display:"flex",alignItems:"center" }}>
+<input
                 style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-mid)', borderRadius: 7, fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }}
-                type="password" placeholder="••••••••" value={pwd} onChange={e => setPwd(e.target.value)}
+                type={showSipPwd?"text":"password"} placeholder="••••••••" value={pwd} onChange={e => setPwd(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && connect()}
               />
+              <button type="button" style={{ position:"absolute",right:10,background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)",display:"flex",alignItems:"center",padding:0 }} onClick={()=>setShowSipPwd(v=>!v)}><EyeIcon show={showSipPwd}/></button>
+              </div>
             </div>
             {status === 'error' && (
               <div style={{ fontSize: 11, color: "var(--danger)", background: 'var(--red-dim)', padding: '6px 10px', borderRadius: 6 }}>{callInfo || 'Error de conexión'}</div>
