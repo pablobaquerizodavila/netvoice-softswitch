@@ -29,6 +29,7 @@ import Softphone from './components/Softphone';
 import Usuarios from './components/Usuarios';
 import Antifraude from './components/Antifraude';
 import APICenter from './components/APICenter';
+import Revendedores from './components/Revendedores';
 
 function Layout({ children }) {
   return (
@@ -80,6 +81,7 @@ export default function App() {
                   <Route path="/usuarios"      element={<Usuarios />} />
                   <Route path="/antifraude"    element={<Antifraude />} />
                   <Route path="/api"          element={<APICenter />} />
+                  <Route path="/revendedores"  element={<Revendedores />} />
                 </Routes>
               </Layout>
             </PrivateRoute>
