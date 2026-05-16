@@ -72,6 +72,8 @@ const NODES = [
   { name:"Asterisk HA",   ip:"192.168.0.216", role:"High Availability",         ok:true },
   { name:"MySQL 8.0",     ip:"192.168.0.161", role:"Base de datos",             ok:true },
   { name:"Nginx + Panel", ip:"192.168.0.7",   role:"Web / API Gateway",         ok:true },
+  { name:"Grafana + Prom.", ip:"192.168.0.170", role:"Monitoreo",                  ok:true },
+  { name:"Media Server",   ip:"192.168.0.18",  role:"Conferencias / Grabaciones", ok:true },
 ];
 const COLORS = ["var(--brand)","var(--success)","var(--info)","var(--warning)","var(--text-secondary)"];
 

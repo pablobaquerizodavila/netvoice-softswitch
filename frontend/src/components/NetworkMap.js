@@ -86,6 +86,8 @@ export default function NetworkMap() {
     { name:"Asterisk HA",   ip:"192.168.0.216", role:"HA Node",  ok:true,  icon:"⇄" },
     { name:"MySQL 8.0",     ip:"192.168.0.161", role:"Database", ok:db?.status==="online", icon:"▣" },
     { name:"Nginx + Panel", ip:"192.168.0.7",   role:"Gateway",  ok:health?.status==="online", icon:"◎" },
+    { name:"Grafana + Prom.", ip:"192.168.0.170", role:"Monitor",   ok:true, icon:"▉" },
+    { name:"Media Server",    ip:"192.168.0.18",  role:"Media",     ok:true, icon:"▶" },
   ];
 
   return (
