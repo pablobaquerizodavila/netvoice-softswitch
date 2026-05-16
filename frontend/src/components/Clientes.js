@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 
-export default function Clientes() {
+export default function BuscarCliente() {
   const [data, setData] = useState([]);
   const [planes, setPlanes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,7 +144,8 @@ export default function Clientes() {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
         <div>
-          <h1 style={{fontSize:20,fontWeight:700,color:'#0f172a',marginBottom:4}}>Clientes</h1>
+          <div className="nv-page-title">Buscar Cliente</div>
+          <div className="nv-page-sub">Busqueda y gestion de clientes existentes</div>
           <p style={{fontSize:13,color:'#94a3b8'}}>{data.length} clientes registrados</p>
         </div>
         <div style={{display:'flex',gap:10}}>
@@ -167,7 +168,7 @@ export default function Clientes() {
       {showForm && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
           <div style={{background:'#fff',borderRadius:14,padding:28,width:500,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
-            <h2 style={{fontSize:17,fontWeight:700,color:'#0f172a',marginBottom:20}}>{editItem ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+            <div className="nv-modal-title">{editItem ? "Editar cliente" : "Nuevo cliente"}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
               <div style={{gridColumn:'1/-1'}}>
                 <label style={lbl}>Nombre / Razon social *</label>

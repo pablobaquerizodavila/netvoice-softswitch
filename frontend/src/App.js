@@ -20,7 +20,7 @@ import CDRPage from './components/CDRPage';
 import Settings from './components/Settings';
 import Carriers from './components/Carriers';
 import Planes from './components/Planes';
-import Clientes from './components/Clientes';
+import BuscarCliente from './components/Clientes';
 import DIDSeries from './components/DIDSeries';
 import Metricas from './components/Metricas';
 import NetworkMap from './components/NetworkMap';
@@ -73,7 +73,7 @@ export default function App() {
                   <Route path="/settings"      element={<Settings />} />
                   <Route path="/carriers"      element={<Carriers />} />
                   <Route path="/planes"        element={<Planes />} />
-                  <Route path="/clientes"      element={<Clientes />} />
+                  <Route path="/clientes"      element={<BuscarCliente />} />
                   <Route path="/clientes-v2"   element={<ClientesV2 />} />
                   <Route path="/dids"          element={<DIDSeries />} />
                   <Route path="/did-series"    element={<DIDSeries />} />
