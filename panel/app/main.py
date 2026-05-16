@@ -1226,3 +1226,126 @@ def save_smtp_config(data: dict, current_user=Depends(get_current_user)):
         return {"status":"ok","message":"Configuracion SMTP guardada. Reinicia el servicio para aplicar."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─── BILLING / FACTURACION ───────────────────────────────────
+from sqlalchemy import text as _bt
+import datetime as _dt
+import uuid as _uuid
+
+@app.get("/billing/config")
+def get_billing_config(db: Session = Depends(get_db)):
+    r = db.execute(_bt("SELECT * FROM billing_config WHERE id=1")).fetchone()
+    return dict(r._mapping) if r else {}
+
+@app.put("/billing/config")
+def save_billing_config(data: dict, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_bt("""
+        UPDATE billing_config SET
+          billing_day=:bd, grace_days=:gd, tax_pct=:tp,
+          auto_suspend=:as_, auto_reactivate=:ar, notify_days_before=:nb
+        WHERE id=1
+    """), {"bd":data.get("billing_day",1),"gd":data.get("grace_days",5),
+           "tp":data.get("tax_pct",12),"as_":data.get("auto_suspend","yes"),
+           "ar":data.get("auto_reactivate","yes"),"nb":data.get("notify_days_before",3)})
+    db.commit()
+    return {"status":"ok"}
+
+@app.get("/billing/invoices")
+def get_invoices(period: str=None, status: str=None, client_id: str=None, db: Session = Depends(get_db)):
+    where = "WHERE 1=1"
+    params = {}
+    if period:   where += " AND i.period=:period";   params["period"] = period
+    if status:   where += " AND i.status=:status";   params["status"] = status
+    if client_id:where += " AND i.client_id=:cid";   params["cid"]    = client_id
+    r = db.execute(_bt(f"""
+        SELECT i.*, c.name as client_name, p.nombre as plan_name
+        FROM invoices i
+        LEFT JOIN clients c ON i.client_id=c.id
+        LEFT JOIN plans   p ON i.plan_id=p.id
+        {where}
+        ORDER BY i.created_at DESC LIMIT 200
+    """), params).fetchall()
+    return {"data":[dict(x._mapping) for x in r]}
+
+@app.post("/billing/generate")
+def generate_invoices(data: dict, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    """Generar facturas mensuales para todos los clientes activos"""
+    period = data.get("period", _dt.datetime.now().strftime("%Y-%m"))
+    cfg    = db.execute(_bt("SELECT * FROM billing_config WHERE id=1")).fetchone()
+    tax_pct= float(cfg.tax_pct) if cfg else 12.0
+    clients = db.execute(_bt("""
+        SELECT c.id, c.name, c.status, p.id as plan_id, p.pension_mensual
+        FROM clients c
+        JOIN plans p ON c.plan_id=p.id
+        WHERE c.status IN ('active','pending')
+    """)).fetchall()
+    generated = 0
+    for cl in clients:
+        existing = db.execute(_bt(
+            "SELECT id FROM invoices WHERE client_id=:cid AND period=:per"
+        ), {"cid":cl.id,"per":period}).fetchone()
+        if existing:
+            continue
+        amount = float(cl.pension_mensual or 0)
+        tax    = round(amount * tax_pct / 100, 4)
+        total  = round(amount + tax, 4)
+        year,month = map(int, period.split("-"))
+        due_day = cfg.billing_day if cfg else 1
+        due_date = _dt.date(year, month, min(due_day, 28))
+        db.execute(_bt("""
+            INSERT INTO invoices (id,client_id,period,plan_id,amount,tax,total,status,due_date)
+            VALUES (:id,:cid,:per,:pid,:amt,:tax,:tot,'sent',:due)
+        """), {"id":str(_uuid.uuid4()),"cid":cl.id,"per":period,"pid":cl.plan_id,
+               "amt":amount,"tax":tax,"tot":total,"due":due_date})
+        generated += 1
+    db.commit()
+    return {"status":"ok","generated":generated,"period":period}
+
+@app.post("/billing/invoices/{invoice_id}/pay")
+def mark_invoice_paid(invoice_id: str, data: dict={}, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    db.execute(_bt("""
+        UPDATE invoices SET status="paid", paid_at=NOW()
+        WHERE id=:id
+    """), {"id":invoice_id})
+    db.commit()
+    return {"status":"ok"}
+
+@app.post("/billing/process-overdue")
+def process_overdue(db: Session = Depends(get_db), u=Depends(get_current_user)):
+    """Marcar facturas vencidas y suspender clientes"""
+    cfg = db.execute(_bt("SELECT * FROM billing_config WHERE id=1")).fetchone()
+    grace = int(cfg.grace_days) if cfg else 5
+    today = _dt.date.today()
+    overdue_date = today - _dt.timedelta(days=grace)
+    r = db.execute(_bt("""
+        UPDATE invoices SET status="overdue"
+        WHERE status="sent" AND due_date <= :od
+    """), {"od":overdue_date})
+    overdue_count = r.rowcount
+    suspended = 0
+    if cfg and cfg.auto_suspend == "yes":
+        overdue_clients = db.execute(_bt("""
+            SELECT DISTINCT client_id FROM invoices WHERE status="overdue"
+        """)).fetchall()
+        for cl in overdue_clients:
+            db.execute(_bt(
+                "UPDATE clients SET status='suspended' WHERE id=:id AND status='active'"
+            ), {"id":cl.client_id})
+            suspended += db.execute(_bt("SELECT ROW_COUNT()")).scalar() or 0
+    db.commit()
+    return {"status":"ok","overdue_invoices":overdue_count,"suspended_clients":suspended}
+
+@app.get("/billing/stats")
+def billing_stats(db: Session = Depends(get_db)):
+    period = _dt.datetime.now().strftime("%Y-%m")
+    r = db.execute(_bt("""
+        SELECT
+          COUNT(*) as total_invoices,
+          SUM(CASE WHEN status="paid"    THEN 1 ELSE 0 END) as paid,
+          SUM(CASE WHEN status="sent"    THEN 1 ELSE 0 END) as pending,
+          SUM(CASE WHEN status="overdue" THEN 1 ELSE 0 END) as overdue,
+          SUM(CASE WHEN status="paid"    THEN total ELSE 0 END) as collected,
+          SUM(CASE WHEN status!="cancelled" THEN total ELSE 0 END) as total_billed
+        FROM invoices WHERE period=:period
+    """), {"period":period}).fetchone()
+    return dict(r._mapping) if r else {}
