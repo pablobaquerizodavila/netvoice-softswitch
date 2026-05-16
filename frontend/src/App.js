@@ -32,6 +32,7 @@ import APICenter from './components/APICenter';
 import Revendedores from './components/Revendedores';
 import Billing from './components/Billing';
 import MobileApp from './components/MobileApp';
+import CDRLive from './components/CDRLive';
 
 function Layout({ children }) {
   return (
@@ -86,6 +87,7 @@ export default function App() {
                   <Route path="/revendedores"  element={<Revendedores />} />
                   <Route path="/billing"       element={<Billing />} />
                   <Route path="/app"          element={<MobileApp />} />
+                  <Route path="/cdr-live"     element={<CDRLive />} />
                 </Routes>
               </Layout>
             </PrivateRoute>
