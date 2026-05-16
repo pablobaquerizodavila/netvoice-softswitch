@@ -1349,3 +1349,216 @@ def billing_stats(db: Session = Depends(get_db)):
         FROM invoices WHERE period=:period
     """), {"period":period}).fetchone()
     return dict(r._mapping) if r else {}
+
+# ─── REPORTES PDF ─────────────────────────────────────────────
+from fastapi.responses import StreamingResponse
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+import io as _io
+import datetime as _dt2
+
+def _make_invoice_pdf(invoice: dict, client: dict, plan: dict) -> bytes:
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Header
+    header_style = ParagraphStyle("header", fontSize=22, fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#1a8cff"), spaceAfter=4)
+    sub_style = ParagraphStyle("sub", fontSize=10, textColor=colors.HexColor("#4a5568"), spaceAfter=2)
+    normal = ParagraphStyle("normal", fontSize=10, textColor=colors.HexColor("#2d3748"), spaceAfter=4)
+    bold = ParagraphStyle("bold", fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1a202c"))
+
+    story.append(Paragraph("NETVOICE", header_style))
+    story.append(Paragraph("Linkotel S.A. | Servicio de Telefonia IP", sub_style))
+    story.append(Paragraph("panel.eneural.org | soporte@linkotel.com", sub_style))
+    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor("#1a8cff")))
+    story.append(Spacer(1, 0.3*cm))
+
+    # Factura info
+    inv_data = [
+        ["FACTURA", f"#{invoice.get('id','')[:8].upper()}"],
+        ["Periodo:",  invoice.get("period","")],
+        ["Emitida:",  str(invoice.get("created_at",""))[:10]],
+        ["Vence:",    str(invoice.get("due_date",""))[:10]],
+        ["Estado:",   invoice.get("status","").upper()],
+    ]
+    t = Table(inv_data, colWidths=[4*cm, 6*cm])
+    t.setStyle(TableStyle([
+        ("FONTNAME",  (0,0),(0,-1), "Helvetica-Bold"),
+        ("FONTSIZE",  (0,0),(-1,-1), 10),
+        ("TEXTCOLOR", (0,0),(0,-1), colors.HexColor("#4a5568")),
+        ("TEXTCOLOR", (1,0),(1,-1), colors.HexColor("#1a202c")),
+        ("TOPPADDING",(0,0),(-1,-1), 3),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 0.5*cm))
+
+    # Cliente
+    story.append(Paragraph("DATOS DEL CLIENTE", ParagraphStyle("sec",fontSize=9,
+        fontName="Helvetica-Bold",textColor=colors.HexColor("#4a5568"),
+        spaceBefore=6,spaceAfter=4)))
+    cl_data = [
+        ["Nombre:",   client.get("name","")],
+        ["RUC/CI:",   client.get("ruc") or client.get("cedula","")],
+        ["Email:",    client.get("email","")],
+        ["Ciudad:",   client.get("ciudad","")],
+    ]
+    tc = Table(cl_data, colWidths=[3*cm, 10*cm])
+    tc.setStyle(TableStyle([
+        ("FONTNAME",  (0,0),(0,-1), "Helvetica-Bold"),
+        ("FONTSIZE",  (0,0),(-1,-1), 10),
+        ("TEXTCOLOR", (0,0),(0,-1), colors.HexColor("#4a5568")),
+        ("TOPPADDING",(0,0),(-1,-1), 2),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 2),
+    ]))
+    story.append(tc)
+    story.append(Spacer(1, 0.5*cm))
+
+    # Detalle
+    story.append(Paragraph("DETALLE DE SERVICIOS", ParagraphStyle("sec2",fontSize=9,
+        fontName="Helvetica-Bold",textColor=colors.HexColor("#4a5568"),
+        spaceBefore=6,spaceAfter=4)))
+    det_data = [
+        ["Descripcion", "Cantidad", "Precio", "Total"],
+        [f"Plan {plan.get('nombre','Base')} - {invoice.get('period','')}", "1",
+         f"${float(invoice.get('amount',0)):.2f}",
+         f"${float(invoice.get('amount',0)):.2f}"],
+    ]
+    td = Table(det_data, colWidths=[8*cm, 2*cm, 3*cm, 3*cm])
+    td.setStyle(TableStyle([
+        ("BACKGROUND",  (0,0),(-1,0), colors.HexColor("#1a8cff")),
+        ("TEXTCOLOR",   (0,0),(-1,0), colors.white),
+        ("FONTNAME",    (0,0),(-1,0), "Helvetica-Bold"),
+        ("FONTSIZE",    (0,0),(-1,-1), 10),
+        ("ALIGN",       (1,0),(-1,-1), "CENTER"),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.HexColor("#f7fafc"),colors.white]),
+        ("GRID",        (0,0),(-1,-1), 0.5, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING",  (0,0),(-1,-1), 6),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 6),
+    ]))
+    story.append(td)
+    story.append(Spacer(1, 0.3*cm))
+
+    # Totales
+    tax = float(invoice.get("tax",0))
+    total = float(invoice.get("total",0))
+    amount = float(invoice.get("amount",0))
+    tot_data = [
+        ["", "Subtotal:", f"${amount:.2f}"],
+        ["", f"IVA (12%):", f"${tax:.2f}"],
+        ["", "TOTAL USD:", f"${total:.2f}"],
+    ]
+    tt = Table(tot_data, colWidths=[8*cm, 3*cm, 3*cm])
+    tt.setStyle(TableStyle([
+        ("FONTNAME",    (1,2),(2,2), "Helvetica-Bold"),
+        ("FONTSIZE",    (0,0),(-1,-1), 10),
+        ("FONTSIZE",    (1,2),(2,2), 12),
+        ("TEXTCOLOR",   (1,2),(2,2), colors.HexColor("#1a8cff")),
+        ("ALIGN",       (1,0),(-1,-1), "RIGHT"),
+        ("TOPPADDING",  (0,0),(-1,-1), 4),
+        ("LINEABOVE",   (1,2),(2,2), 1, colors.HexColor("#1a8cff")),
+    ]))
+    story.append(tt)
+    story.append(Spacer(1, 1*cm))
+
+    # Footer
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0")))
+    story.append(Paragraph("Linkotel S.A. | RUC: XXXXXXXXXX | Guayaquil, Ecuador",
+        ParagraphStyle("footer", fontSize=8, textColor=colors.HexColor("#718096"),
+        alignment=TA_CENTER, spaceBefore=6)))
+    story.append(Paragraph("Este documento es una factura electronica generada por Netvoice.",
+        ParagraphStyle("footer2", fontSize=8, textColor=colors.HexColor("#a0aec0"),
+        alignment=TA_CENTER)))
+
+    doc.build(story)
+    return buf.getvalue()
+
+@app.get("/billing/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: str, db: Session = Depends(get_db)):
+    from sqlalchemy import text as _t3
+    inv = db.execute(_t3("""
+        SELECT i.*, c.name, c.ruc, c.cedula, c.email, c.ciudad,
+               p.nombre as plan_nombre
+        FROM invoices i
+        LEFT JOIN clients c ON i.client_id=c.id
+        LEFT JOIN plans   p ON i.plan_id=p.id
+        WHERE i.id=:id
+    """), {"id":invoice_id}).fetchone()
+    if not inv:
+        raise HTTPException(404, "Factura no encontrada")
+    inv_dict = dict(inv._mapping)
+    client   = {"name":inv_dict.get("name",""), "ruc":inv_dict.get("ruc",""),
+                 "cedula":inv_dict.get("cedula",""), "email":inv_dict.get("email",""),
+                 "ciudad":inv_dict.get("ciudad","")}
+    plan     = {"nombre": inv_dict.get("plan_nombre","Base")}
+    pdf_bytes = _make_invoice_pdf(inv_dict, client, plan)
+    return StreamingResponse(
+        _io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=factura-{invoice_id[:8]}.pdf"}
+    )
+
+@app.get("/reports/cdr/pdf")
+def cdr_report_pdf(meses: int=1, db: Session = Depends(get_db)):
+    from sqlalchemy import text as _t4
+    rows = db.execute(_t4("""
+        SELECT src, dst, dcontext, duration, billsec, disposition,
+               DATE_FORMAT(calldate, "%Y-%m-%d %H:%i") as fecha
+        FROM cdr
+        WHERE calldate >= DATE_SUB(NOW(), INTERVAL :m MONTH)
+        ORDER BY calldate DESC LIMIT 500
+    """), {"m":meses}).fetchall()
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("REPORTE CDR - NETVOICE",
+        ParagraphStyle("h",fontSize=16,fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#1a8cff"),spaceAfter=4)))
+    story.append(Paragraph(f"Periodo: ultimos {meses} mes(es) | Generado: {_dt2.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        ParagraphStyle("s",fontSize=9,textColor=colors.HexColor("#4a5568"),spaceAfter=12)))
+    story.append(HRFlowable(width="100%",thickness=2,color=colors.HexColor("#1a8cff")))
+    story.append(Spacer(1,0.3*cm))
+
+    data = [["Fecha","Origen","Destino","Contexto","Dur.","Billsec","Estado"]]
+    for r in rows:
+        d = dict(r._mapping)
+        data.append([
+            d.get("fecha",""),
+            d.get("src",""),
+            d.get("dst",""),
+            d.get("dcontext","")[:12],
+            str(d.get("duration",0))+"s",
+            str(d.get("billsec",0))+"s",
+            d.get("disposition","")[:10],
+        ])
+
+    t = Table(data, colWidths=[3.5*cm,2*cm,2*cm,2.5*cm,1.5*cm,1.8*cm,2.2*cm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",   (0,0),(-1,0), colors.HexColor("#1a8cff")),
+        ("TEXTCOLOR",    (0,0),(-1,0), colors.white),
+        ("FONTNAME",     (0,0),(-1,0), "Helvetica-Bold"),
+        ("FONTSIZE",     (0,0),(-1,-1), 8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.HexColor("#f7fafc"),colors.white]),
+        ("GRID",         (0,0),(-1,-1), 0.3, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING",   (0,0),(-1,-1), 3),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+    ]))
+    story.append(t)
+    doc.build(story)
+    return StreamingResponse(
+        _io.BytesIO(buf.getvalue()),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=cdr-report-{meses}m.pdf"}
+    )
